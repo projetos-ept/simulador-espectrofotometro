@@ -527,18 +527,24 @@ function generateCurves() {
   const grid = document.getElementById('curvesGrid');
   grid.innerHTML = '';
 
-  const labels   = ['A', 'B', 'C', 'D'];
-  const badIdx   = Math.floor(Math.random() * 4);
-  const badType  = ['outlier', 'plateau', 'dispersion'][Math.floor(Math.random() * 3)];
-  const epsilons = shuffled([0.0028, 0.0035, 0.0042]);
+  const labels = ['A', 'B', 'C', 'D'];
 
+  // Exactly 2 bad and 2 good curves at random positions
+  const positions = shuffled([0, 1, 2, 3]);
+  const badSet    = new Set([positions[0], positions[1]]);
+  const badTypes  = shuffled(['outlier', 'plateau', 'dispersion', 'outlier']);
+  const goodEps   = shuffled([0.0028, 0.0031, 0.0035, 0.0040]);
+
+  let badCount = 0, goodCount = 0;
   state.generatedCurves = [];
-  let goodUsed = 0;
 
   labels.forEach((label, i) => {
-    const isBad  = i === badIdx;
-    const points = isBad ? generateBadCurve(badType) : generateGoodCurve(epsilons[goodUsed++]);
-    const curve  = { label, points, isBad, badType };
+    const isBad  = badSet.has(i);
+    const points = isBad
+      ? generateBadCurveSafe(badTypes[badCount++])
+      : generateGoodCurveSafe(goodEps[goodCount++]);
+    const { r, r2 } = calcR2(points);
+    const curve = { label, points, isBad, r, r2 };
     state.generatedCurves.push(curve);
     grid.appendChild(buildCurveCard(curve));
   });
@@ -576,8 +582,41 @@ function generateBadCurve(type) {
   }
 }
 
+function calcR2(points) {
+  const n = points.length;
+  if (n < 2) return { r: 0, r2: 0 };
+  const xs   = points.map(p => p.conc);
+  const ys   = points.map(p => p.abs);
+  const xbar = xs.reduce((a, b) => a + b, 0) / n;
+  const ybar = ys.reduce((a, b) => a + b, 0) / n;
+  let ssxy = 0, ssxx = 0, ssyy = 0;
+  for (let i = 0; i < n; i++) {
+    ssxy += (xs[i] - xbar) * (ys[i] - ybar);
+    ssxx += (xs[i] - xbar) ** 2;
+    ssyy += (ys[i] - ybar) ** 2;
+  }
+  if (ssxx === 0 || ssyy === 0) return { r: 0, r2: 0 };
+  const r = ssxy / Math.sqrt(ssxx * ssyy);
+  return { r: Math.abs(r), r2: r * r };
+}
+
+/* Wrappers that guarantee R² meets the acceptance criterion */
+function generateGoodCurveSafe(epsilon) {
+  let pts, stats;
+  do { pts = generateGoodCurve(epsilon); stats = calcR2(pts); }
+  while (stats.r2 < 0.995);
+  return pts;
+}
+
+function generateBadCurveSafe(type) {
+  let pts, stats;
+  do { pts = generateBadCurve(type); stats = calcR2(pts); }
+  while (stats.r2 >= 0.995);
+  return pts;
+}
+
 function buildCurveCard(curve) {
-  const { label, points } = curve;
+  const { label, points, r2 } = curve;
 
   const card = document.createElement('div');
   card.className = 'curve-card';
@@ -587,6 +626,12 @@ function buildCurveCard(curve) {
   title.className = 'curve-card-title';
   title.textContent = `Curva ${label}`;
   card.appendChild(title);
+
+  // R² badge
+  const badge = document.createElement('div');
+  badge.className = `r2-badge ${r2 >= 0.995 ? 'ok' : 'bad'}`;
+  badge.innerHTML = `R² = ${r2.toFixed(4)} &nbsp;${r2 >= 0.995 ? '✓ Aprovada' : '✗ Reprovada'}`;
+  card.appendChild(badge);
 
   // Points table
   const tbl = document.createElement('table');
@@ -609,7 +654,7 @@ function buildCurveCard(curve) {
   canvas.width  = 140;
   canvas.height = 95;
   card.appendChild(canvas);
-  requestAnimationFrame(() => drawScatter(canvas, points));
+  requestAnimationFrame(() => drawScatter(canvas, points, r2));
 
   // Select button
   const selBtn = document.createElement('button');
@@ -634,7 +679,7 @@ function selectCurve(label) {
   if (btn)  { btn.classList.add('selected'); btn.textContent = '✓ Selecionada'; }
 }
 
-function drawScatter(canvas, points) {
+function drawScatter(canvas, points, r2 = 0) {
   const ctx  = canvas.getContext('2d');
   const W    = canvas.width, H = canvas.height;
   const pad  = { top: 8, right: 8, bottom: 20, left: 30 };
@@ -690,11 +735,17 @@ function drawScatter(canvas, points) {
 
   // Points
   points.forEach(p => {
-    ctx.fillStyle = '#33ff66';
+    ctx.fillStyle = r2 >= 0.995 ? '#33ff66' : '#ff5555';
     ctx.beginPath();
     ctx.arc(tx(p.conc), ty(p.abs), 2.5, 0, Math.PI * 2);
     ctx.fill();
   });
+
+  // R² label on chart
+  ctx.fillStyle = r2 >= 0.995 ? '#22aa44' : '#cc3333';
+  ctx.font = 'bold 7px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`R²=${r2.toFixed(4)}`, pad.left + 2, pad.top + 8);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
