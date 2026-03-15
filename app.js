@@ -1,0 +1,915 @@
+'use strict';
+
+/* ═══════════════════════════════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════════════════════════════ */
+const state = {
+  mode: 'glucose',      // 'glucose' | 'generic'
+  lambda: 505,
+
+  // Calibration
+  calibrated:  false,
+
+  // Triplicate standard
+  triplicateAttempt: 0,     // 0=not started, increments on each reading attempt
+  triplicateReadings: [],   // [{ label, abs, pctT, included }]
+  triplicateMean:  null,
+  triplicateSD:    null,
+  triplicateCV:    null,
+
+  fator:         null,
+  fatorAccepted: false,
+
+  // Generic mode
+  analyteName: 'Proteína Total',
+  stdConc:     100,
+  unit:        'g/dL',
+
+  // Results
+  results:     [],
+  sampleCount: 0,
+
+  // Calibration curves
+  generatedCurves:    [],
+  selectedCurveLabel: null,
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   CONSTANTS
+   ═══════════════════════════════════════════════════════════════════ */
+const WAVELENGTHS  = [340, 405, 505, 540, 546, 570, 620, 670];
+const STD_POINTS   = [0, 25, 50, 100, 150, 200]; // calibration curve concentrations
+const CV_THRESHOLD = 5.0;  // % — max acceptable CV for triplicate
+
+// Approximate molar absorptivity per wavelength (simulated)
+const EPSILON_MAP = {
+  340: 0.00320, 405: 0.00280, 505: 0.00312,
+  540: 0.00290, 546: 0.00305, 570: 0.00270,
+  620: 0.00185, 670: 0.00160,
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   INIT
+   ═══════════════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+  buildLambdaGrid();
+  setLambda(505);
+  setLedState('red');
+  renderTable();
+
+  // Live sync generic fields
+  ['genericAnalyte', 'genericUnit', 'genericStd'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', () => { syncGenericFields(); resetCalibration(); });
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════
+   LAMBDA
+   ═══════════════════════════════════════════════════════════════════ */
+function buildLambdaGrid() {
+  const grid = document.getElementById('lambdaGrid');
+  grid.innerHTML = '';
+  WAVELENGTHS.forEach(nm => {
+    const btn = document.createElement('button');
+    btn.className = 'lambda-btn';
+    btn.textContent = nm;
+    btn.id = `lbtn-${nm}`;
+    btn.onclick = () => { if (!btn.disabled) { setLambda(nm); resetCalibration(); } };
+    grid.appendChild(btn);
+  });
+}
+
+function setLambda(nm) {
+  state.lambda = nm;
+  document.getElementById('lambdaDisplay').textContent = `λ: ${nm} nm`;
+  document.querySelectorAll('.lambda-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.textContent) === nm);
+  });
+}
+
+function lockLambda(locked) {
+  document.querySelectorAll('.lambda-btn').forEach(b => {
+    b.disabled = locked;
+    b.style.opacity = locked ? '0.35' : '';
+    b.style.cursor  = locked ? 'not-allowed' : '';
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MODE
+   ═══════════════════════════════════════════════════════════════════ */
+function setMode(mode, tabEl) {
+  state.mode = mode;
+
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  tabEl.classList.add('active');
+
+  const gf = document.getElementById('genericFields');
+
+  if (mode === 'glucose') {
+    gf.classList.add('hidden');
+    setLambda(505);
+    lockLambda(true);
+  } else {
+    gf.classList.remove('hidden');
+    lockLambda(false);
+    syncGenericFields();
+  }
+
+  resetCalibration();
+}
+
+function syncGenericFields() {
+  state.analyteName = document.getElementById('genericAnalyte').value || 'Analito';
+  state.stdConc     = parseFloat(document.getElementById('genericStd').value) || 100;
+  state.unit        = document.getElementById('genericUnit').value || 'u';
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CALIBRATION — BLANK
+   ═══════════════════════════════════════════════════════════════════ */
+function doBlanco() {
+  setLedState('yellow', 'Zerando…');
+
+  setTimeout(() => {
+    state.calibrated      = true;
+    state.fator           = null;
+    state.fatorAccepted   = false;
+    state.triplicateAttempt  = 0;
+    state.triplicateReadings = [];
+
+    setLedState('green', 'Pronto');
+    setDisplay(0.0000, 100.0, null, null);
+    document.getElementById('btnLerPadrao').disabled   = false;
+    document.getElementById('btnLerAmostra').disabled  = true;
+    document.getElementById('fatorCallout').classList.remove('visible');
+    document.getElementById('triplicateSection').classList.add('hidden');
+    setStatus('Aparelho zerado. Leia o padrão (triplicata).', 'ok');
+  }, 600);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CALIBRATION — TRIPLICATE STANDARD
+   ═══════════════════════════════════════════════════════════════════ */
+function doLerPadrao() {
+  if (!state.calibrated) { setStatus('Calibre com BRANCO primeiro.', 'err'); return; }
+  if (state.mode === 'generic') syncGenericFields();
+
+  setLedState('yellow', 'Lendo…');
+  setTimeout(() => {
+    state.triplicateAttempt++;
+
+    const stdConc = getStdConc();
+    const eps     = getEpsilon();
+    const baseAbs = stdConc * eps;
+
+    // On the first attempt, randomly introduce one outlier (60% chance)
+    const hasOutlier = state.triplicateAttempt === 1 && Math.random() < 0.6;
+    const outlierIdx = hasOutlier ? Math.floor(Math.random() * 3) : -1;
+
+    const readings = [0, 1, 2].map(i => {
+      let abs = baseAbs + (Math.random() - 0.5) * baseAbs * 0.012; // ±0.6% noise
+      if (i === outlierIdx) {
+        // 20% deviation, direction randomised
+        abs *= Math.random() > 0.5 ? 1.20 : 0.80;
+      }
+      abs = Math.max(0.0001, abs);
+      const pctT = 100 * Math.pow(10, -abs);
+      return { label: `P${i + 1}`, abs, pctT, included: true };
+    });
+
+    state.triplicateReadings = readings;
+    setLedState('green', 'Pronto');
+
+    renderTriplicate();
+    updateTriplicateCalc();
+
+    document.getElementById('triplicateSection').classList.remove('hidden');
+    setStatus('Triplicata gerada. Verifique as leituras e aceite.', '');
+  }, 700);
+}
+
+function renderTriplicate() {
+  const container = document.getElementById('triplicateReadings');
+  container.innerHTML = '';
+
+  state.triplicateReadings.forEach((r, i) => {
+    const row = document.createElement('div');
+    row.className = 'tripl-reading' + (r.included ? '' : ' excluded');
+    row.id = `tripl-row-${i}`;
+
+    const deviation = detectDeviation(i);
+
+    row.innerHTML = `
+      <span class="tripl-reading-label">${r.label}</span>
+      <span class="tripl-reading-abs">${r.abs.toFixed(4)} Abs</span>
+      <span class="tripl-reading-pct">${r.pctT.toFixed(1)} %T</span>
+      <span class="tripl-reading-warn">${deviation ? '⚠' : ''}</span>
+      <button class="tripl-toggle ${r.included ? 'include' : 'exclude'}"
+              onclick="toggleTriplicateReading(${i})">
+        ${r.included ? '✓ Incluir' : '✗ Rejeitado'}
+      </button>
+    `;
+    container.appendChild(row);
+  });
+}
+
+function detectDeviation(idx) {
+  // Warn if this reading deviates > 10% from the median of all 3
+  const vals = state.triplicateReadings.map(r => r.abs);
+  const sorted = [...vals].sort((a, b) => a - b);
+  const median = sorted[1]; // middle value of 3
+  return Math.abs(vals[idx] - median) / median > 0.10;
+}
+
+function toggleTriplicateReading(i) {
+  state.triplicateReadings[i].included = !state.triplicateReadings[i].included;
+  renderTriplicate();
+  updateTriplicateCalc();
+}
+
+function updateTriplicateCalc() {
+  const included = state.triplicateReadings.filter(r => r.included);
+  const calcBox  = document.getElementById('triplicateCalc');
+  const statusEl = document.getElementById('triplicateStatus');
+  const acceptBtn = document.getElementById('btnAceitarTripl');
+
+  if (included.length === 0) {
+    calcBox.innerHTML = '<div class="calc-line"><span class="calc-key">Aviso</span><span class="calc-expr" style="color:var(--danger)">Inclua pelo menos uma leitura.</span></div>';
+    acceptBtn.disabled = true;
+    statusEl.textContent = '';
+    statusEl.className = 'tripl-status';
+    return;
+  }
+
+  const mean = included.reduce((s, r) => s + r.abs, 0) / included.length;
+
+  let sd = 0;
+  if (included.length > 1) {
+    const variance = included.reduce((s, r) => s + Math.pow(r.abs - mean, 2), 0) / (included.length - 1);
+    sd = Math.sqrt(variance);
+  }
+
+  const cv = included.length > 1 ? (sd / mean) * 100 : 0;
+
+  state.triplicateMean = mean;
+  state.triplicateSD   = sd;
+  state.triplicateCV   = cv;
+
+  const stdConc  = getStdConc();
+  const unit     = getUnit();
+  const fator    = stdConc / mean;
+  const cvBadge  = cv === 0 ? 'ok' : cv <= 2 ? 'ok' : cv <= CV_THRESHOLD ? 'warn' : 'bad';
+
+  // Build expression string
+  const labels  = included.map(r => r.label);
+  const absVals = included.map(r => r.abs.toFixed(4));
+
+  let mediaExpr = '';
+  if (included.length === 1) {
+    mediaExpr = `${absVals[0]}`;
+  } else {
+    mediaExpr = `(${absVals.join(' + ')}) / ${included.length}`;
+  }
+
+  calcBox.innerHTML = `
+    <div class="calc-line">
+      <span class="calc-key">Incluídos</span>
+      <span class="calc-expr">${labels.join(', ')} (N = ${included.length})</span>
+    </div>
+    <div class="calc-line">
+      <span class="calc-key">Média</span>
+      <span class="calc-expr">${mediaExpr}</span>
+      <span class="calc-result">${mean.toFixed(4)} Abs</span>
+    </div>
+    ${included.length > 1 ? `
+    <div class="calc-line">
+      <span class="calc-key">DP</span>
+      <span class="calc-expr">&sigma; das leituras aceitas</span>
+      <span class="calc-result">${sd.toFixed(5)}</span>
+    </div>
+    <div class="calc-line">
+      <span class="calc-key">CV%</span>
+      <span class="calc-expr">(DP / Média) × 100</span>
+      <span class="calc-result">${cv.toFixed(2)}%
+        <span class="cv-badge ${cvBadge}">${cvBadge === 'bad' ? 'Reprovado' : cvBadge === 'warn' ? 'Atenção' : 'Aprovado'}</span>
+      </span>
+    </div>` : ''}
+    <div class="calc-line" style="margin-top:4px">
+      <span class="calc-key">Fator</span>
+      <span class="calc-expr">${stdConc} / ${mean.toFixed(4)}</span>
+      <span class="calc-result">${fator.toFixed(2)} ${unit}/Abs</span>
+    </div>
+  `;
+
+  const ok = cv <= CV_THRESHOLD;
+  acceptBtn.disabled = !ok;
+
+  if (cv > CV_THRESHOLD) {
+    statusEl.textContent = `CV ${cv.toFixed(1)}% > ${CV_THRESHOLD}% — rejeite a leitura discrepante ou refaça.`;
+    statusEl.className = 'tripl-status err';
+  } else if (cv > 2) {
+    statusEl.textContent = `CV ${cv.toFixed(1)}% — aceito, mas verifique a qualidade analítica.`;
+    statusEl.className = 'tripl-status warn';
+  } else {
+    statusEl.textContent = `CV ${cv.toFixed(1)}% — triplicata aprovada. ✓`;
+    statusEl.className = 'tripl-status ok';
+  }
+}
+
+function aceitarTriplicata() {
+  const mean    = state.triplicateMean;
+  const stdConc = getStdConc();
+  const unit    = getUnit();
+  const fator   = stdConc / mean;
+
+  state.fator         = fator;
+  state.fatorAccepted = true;
+
+  const pctT = 100 * Math.pow(10, -mean);
+  setDisplay(mean, pctT, stdConc, fator);
+  setLedState('green', 'Pronto');
+
+  const callout = document.getElementById('fatorCallout');
+  callout.textContent = `Fator = ${stdConc} / ${mean.toFixed(4)} = ${fator.toFixed(2)} ${unit}/Abs`;
+  callout.classList.add('visible');
+
+  document.getElementById('btnLerAmostra').disabled = false;
+
+  setStatus(`Fator de calibração: ${fator.toFixed(2)} ${unit}/Abs. Leia as amostras.`, 'ok');
+  document.getElementById('triplicateStatus').textContent = 'Triplicata aceita. Fator calculado. ✓';
+  document.getElementById('triplicateStatus').className = 'tripl-status ok';
+  document.getElementById('btnAceitarTripl').disabled = true;
+}
+
+function refazerTriplicata() {
+  // Re-read — on attempt 2+ there is no outlier
+  doLerPadrao();
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SAMPLE READING
+   ═══════════════════════════════════════════════════════════════════ */
+function doLerAmostra() {
+  if (!state.calibrated) { setStatus('Calibre com BRANCO primeiro.', 'err'); return; }
+  if (!state.fatorAccepted) { setStatus('Aceite a triplicata do padrão primeiro.', 'err'); return; }
+  if (state.mode === 'generic') syncGenericFields();
+
+  setLedState('yellow', 'Lendo…');
+  setTimeout(() => {
+    const eps  = getEpsilon();
+    const unit = getUnit();
+    const conc = generateConcentration();
+
+    const absTrue = conc * eps;
+    const noise   = (Math.random() - 0.5) * absTrue * 0.008;
+    const abs     = Math.max(0.0001, absTrue + noise);
+    const pctT    = 100 * Math.pow(10, -abs);
+    const concCalc = abs * state.fator;
+
+    state.sampleCount++;
+    state.results.push({
+      n:      state.sampleCount,
+      name:   `Amostra ${state.sampleCount}`,
+      lambda: state.lambda,
+      abs,
+      pctT,
+      fator: state.fator,
+      conc:  concCalc,
+      unit,
+      mode:  state.mode,
+    });
+
+    setLedState('green', 'Pronto');
+    setDisplay(abs, pctT, concCalc, state.fator);
+    document.getElementById('dispUnit').textContent = unit;
+    renderTable();
+    setStatus(`Amostra ${state.sampleCount} registrada — ${concCalc.toFixed(1)} ${unit}`, 'ok');
+  }, 450);
+}
+
+/* Glucose distribution: 70% normal (70-99), 12% hypo, 12% pre-diabetes, 6% diabetes */
+function generateConcentration() {
+  if (state.mode === 'glucose') {
+    const r = Math.random();
+    if (r < 0.70)       return 70  + Math.random() * 29;   // 70–99 (normal)
+    else if (r < 0.82)  return 50  + Math.random() * 20;   // 50–69 (hypoglycemia)
+    else if (r < 0.94)  return 100 + Math.random() * 26;   // 100–125 (pre-diabetes)
+    else                return 126 + Math.random() * 274;   // 126–400 (diabetes)
+  } else {
+    const std = state.stdConc;
+    return std * (0.3 + Math.random() * 1.7); // 30–200% of standard
+  }
+}
+
+function classifyResult(row) {
+  if (row.mode !== 'glucose') return null;
+  const c = row.conc;
+  if (c < 70)   return { label: 'Hipoglicemia', cls: 'hypo' };
+  if (c <= 99)  return { label: 'Normal',       cls: 'normal' };
+  if (c <= 125) return { label: 'Pré-diabetes', cls: 'pre' };
+  return              { label: 'Diabetes',      cls: 'diab' };
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   DISPLAY
+   ═══════════════════════════════════════════════════════════════════ */
+function setDisplay(abs, pctT, conc, fator) {
+  const fmt = (v, d) => v !== null ? v.toFixed(d) : '—';
+  document.getElementById('dispAbs').textContent  = fmt(abs, 4);
+  document.getElementById('dispT').textContent    = fmt(pctT, 1);
+  document.getElementById('dispConc').textContent = fmt(conc, 2);
+  document.getElementById('dispFator').textContent = fmt(fator, 2);
+  document.getElementById('dispUnit').textContent  = conc !== null ? getUnit() : '—';
+  document.getElementById('dispFatorUnit').textContent = fator !== null ? getUnit() + '/Abs' : '';
+}
+
+function setStatus(msg, type) {
+  const el = document.getElementById('statusMsg');
+  el.textContent = msg;
+  el.className = 'status-msg' + (type ? ' ' + type : '');
+}
+
+function setLedState(color, label) {
+  const led = document.getElementById('led');
+  const lbl = document.getElementById('ledLabel');
+  led.className = 'led ' + color;
+  lbl.textContent = label || (color === 'green' ? 'Pronto' : color === 'yellow' ? 'Lendo…' : 'Não calibrado');
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   RESET
+   ═══════════════════════════════════════════════════════════════════ */
+function resetCalibration() {
+  state.calibrated      = false;
+  state.fator           = null;
+  state.fatorAccepted   = false;
+  state.triplicateAttempt  = 0;
+  state.triplicateReadings = [];
+  state.triplicateMean  = null;
+
+  setLedState('red');
+  setDisplay(null, null, null, null);
+
+  document.getElementById('btnLerPadrao').disabled  = true;
+  document.getElementById('btnLerAmostra').disabled = true;
+  document.getElementById('fatorCallout').classList.remove('visible');
+  document.getElementById('triplicateSection').classList.add('hidden');
+  setStatus('Calibre o aparelho com BRANCO antes de iniciar.', '');
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   RESULTS TABLE
+   ═══════════════════════════════════════════════════════════════════ */
+function renderTable() {
+  const tbody = document.getElementById('resultsBody');
+
+  if (!state.results.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="table-empty">Nenhuma leitura registrada.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = state.results.map(r => {
+    const ref = classifyResult(r);
+    const refCell = ref
+      ? `<span class="ref-badge ${ref.cls}">${ref.label}</span>`
+      : `<span class="ref-badge na">—</span>`;
+    return `
+      <tr>
+        <td class="num">${r.n}</td>
+        <td class="lbl">${r.name}</td>
+        <td class="num">${r.lambda}</td>
+        <td class="num">${r.abs.toFixed(4)}</td>
+        <td class="num">${r.pctT.toFixed(1)}</td>
+        <td class="num">${r.fator.toFixed(2)}</td>
+        <td class="num">${r.conc.toFixed(2)}</td>
+        <td class="lbl">${r.unit}</td>
+        <td>${refCell}</td>
+      </tr>`;
+  }).join('');
+}
+
+function clearTable() {
+  state.results = [];
+  state.sampleCount = 0;
+  renderTable();
+}
+
+function copyTable() {
+  if (!state.results.length) { setStatus('Tabela vazia.', 'warn'); return; }
+
+  const header = ['#','Amostra','λ(nm)','Abs','%T','Fator','Concentração','Unidade','Classificação'].join('\t');
+  const rows = state.results.map(r => {
+    const ref = classifyResult(r);
+    return [r.n, r.name, r.lambda, r.abs.toFixed(4), r.pctT.toFixed(1),
+            r.fator.toFixed(2), r.conc.toFixed(2), r.unit, ref ? ref.label : '—'].join('\t');
+  });
+
+  const text = [header, ...rows].join('\n');
+
+  navigator.clipboard.writeText(text)
+    .then(() => setStatus('Tabela copiada.', 'ok'))
+    .catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy');
+      document.body.removeChild(ta);
+      setStatus('Tabela copiada.', 'ok');
+    });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CALIBRATION CURVES
+   ═══════════════════════════════════════════════════════════════════ */
+function generateCurves() {
+  state.selectedCurveLabel = null;
+  const grid = document.getElementById('curvesGrid');
+  grid.innerHTML = '';
+
+  const labels   = ['A', 'B', 'C', 'D'];
+  const badIdx   = Math.floor(Math.random() * 4);
+  const badType  = ['outlier', 'plateau', 'dispersion'][Math.floor(Math.random() * 3)];
+  const epsilons = shuffled([0.0028, 0.0035, 0.0042]);
+
+  state.generatedCurves = [];
+  let goodUsed = 0;
+
+  labels.forEach((label, i) => {
+    const isBad  = i === badIdx;
+    const points = isBad ? generateBadCurve(badType) : generateGoodCurve(epsilons[goodUsed++]);
+    const curve  = { label, points, isBad, badType };
+    state.generatedCurves.push(curve);
+    grid.appendChild(buildCurveCard(curve));
+  });
+}
+
+function generateGoodCurve(epsilon) {
+  return STD_POINTS.map(c => {
+    const abs = Math.max(0, c * epsilon + (Math.random() - 0.5) * c * epsilon * 0.015);
+    return { conc: c, abs };
+  });
+}
+
+function generateBadCurve(type) {
+  const eps = 0.0033;
+
+  if (type === 'outlier') {
+    const pts = generateGoodCurve(eps);
+    const idx = 2 + Math.floor(Math.random() * 3); // middle points only
+    pts[idx].abs = Math.max(0, pts[idx].abs * (Math.random() > 0.5 ? 1.40 : 0.65));
+    return pts;
+
+  } else if (type === 'plateau') {
+    return STD_POINTS.map(c => {
+      const effC = c < 100 ? c : 100 + (c - 100) * 0.12;
+      const abs  = Math.max(0, effC * eps + (Math.random() - 0.5) * 0.002);
+      return { conc: c, abs };
+    });
+
+  } else { // dispersion
+    return STD_POINTS.map(c => {
+      const base  = c * eps;
+      const noise = c === 0 ? 0 : (Math.random() - 0.5) * base * 0.30;
+      return { conc: c, abs: Math.max(0, base + noise) };
+    });
+  }
+}
+
+function buildCurveCard(curve) {
+  const { label, points } = curve;
+
+  const card = document.createElement('div');
+  card.className = 'curve-card';
+  card.id = `curve-card-${label}`;
+
+  const title = document.createElement('div');
+  title.className = 'curve-card-title';
+  title.textContent = `Curva ${label}`;
+  card.appendChild(title);
+
+  // Points table
+  const tbl = document.createElement('table');
+  tbl.className = 'curve-table';
+  tbl.innerHTML = `
+    <thead><tr><th>Padrão</th><th>Conc.</th><th>Abs</th></tr></thead>
+    <tbody>
+      ${points.map((p, i) => `
+        <tr>
+          <td class="lbl">${i === 0 ? 'Branco' : 'P' + i}</td>
+          <td class="num">${p.conc}</td>
+          <td class="num">${p.abs.toFixed(4)}</td>
+        </tr>`).join('')}
+    </tbody>`;
+  card.appendChild(tbl);
+
+  // Canvas scatter
+  const canvas = document.createElement('canvas');
+  canvas.className = 'scatter';
+  canvas.width  = 140;
+  canvas.height = 95;
+  card.appendChild(canvas);
+  requestAnimationFrame(() => drawScatter(canvas, points));
+
+  // Select button
+  const selBtn = document.createElement('button');
+  selBtn.className = 'curve-select-btn';
+  selBtn.id = `sel-btn-${label}`;
+  selBtn.textContent = 'Selecionar para relatório';
+  selBtn.onclick = (e) => { e.stopPropagation(); selectCurve(label); };
+  card.appendChild(selBtn);
+
+  card.onclick = () => selectCurve(label);
+
+  return card;
+}
+
+function selectCurve(label) {
+  state.selectedCurveLabel = label;
+  document.querySelectorAll('.curve-card').forEach(c => c.classList.remove('selected'));
+  document.querySelectorAll('.curve-select-btn').forEach(b => b.classList.remove('selected'));
+  const card = document.getElementById(`curve-card-${label}`);
+  const btn  = document.getElementById(`sel-btn-${label}`);
+  if (card) card.classList.add('selected');
+  if (btn)  { btn.classList.add('selected'); btn.textContent = '✓ Selecionada'; }
+}
+
+function drawScatter(canvas, points) {
+  const ctx  = canvas.getContext('2d');
+  const W    = canvas.width, H = canvas.height;
+  const pad  = { top: 8, right: 8, bottom: 20, left: 30 };
+  const plotW = W - pad.left - pad.right;
+  const plotH = H - pad.top - pad.bottom;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#081508';
+  ctx.fillRect(0, 0, W, H);
+
+  const maxConc = 200;
+  const maxAbs  = Math.max(...points.map(p => p.abs), 0.05) * 1.15;
+
+  const tx = c => pad.left + (c / maxConc) * plotW;
+  const ty = a => H - pad.bottom - (a / maxAbs) * plotH;
+
+  // Axes
+  ctx.strokeStyle = '#0f2e0f';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top);
+  ctx.lineTo(pad.left, H - pad.bottom);
+  ctx.lineTo(W - pad.right, H - pad.bottom);
+  ctx.stroke();
+
+  // Axis tick labels
+  ctx.fillStyle = '#1c6634';
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'center';
+  [0, 100, 200].forEach(c => {
+    ctx.fillText(c, tx(c), H - 5);
+  });
+  ctx.textAlign = 'right';
+  [0, maxAbs / 2].forEach(a => {
+    ctx.fillText(a.toFixed(2), pad.left - 2, ty(a) + 3);
+  });
+
+  // Trend line
+  const n = points.length;
+  let sX = 0, sY = 0, sXY = 0, sXX = 0;
+  points.forEach(p => { sX += p.conc; sY += p.abs; sXY += p.conc * p.abs; sXX += p.conc * p.conc; });
+  const slope = (n * sXY - sX * sY) / (n * sXX - sX * sX);
+  const inter = (sY - slope * sX) / n;
+
+  ctx.strokeStyle = '#1a5a1a';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2, 2]);
+  ctx.beginPath();
+  ctx.moveTo(tx(0), ty(inter));
+  ctx.lineTo(tx(200), ty(slope * 200 + inter));
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Points
+  points.forEach(p => {
+    ctx.fillStyle = '#33ff66';
+    ctx.beginPath();
+    ctx.arc(tx(p.conc), ty(p.abs), 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PRINT REPORT
+   ═══════════════════════════════════════════════════════════════════ */
+function printReport() {
+  const now      = new Date();
+  const dateStr  = now.toLocaleDateString('pt-BR');
+  const timeStr  = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const assay    = state.mode === 'glucose' ? 'Glicose (GOD-PAP)' : state.analyteName;
+  const unit     = getUnit();
+  const stdConc  = getStdConc();
+  const lambda   = state.lambda;
+
+  // Triplicate data
+  const tripl       = state.triplicateReadings;
+  const triHasData  = tripl.length > 0;
+  const mean        = state.triplicateMean;
+  const sd          = state.triplicateSD;
+  const cv          = state.triplicateCV;
+  const fator       = state.fator;
+
+  // Selected curve
+  const selCurve = state.generatedCurves.find(c => c.label === state.selectedCurveLabel);
+
+  /* ── Triplicate rows HTML ── */
+  const triplRows = triHasData
+    ? tripl.map(r => `
+        <tr>
+          <td>${r.label}</td>
+          <td style="text-align:right;font-family:monospace">${r.abs.toFixed(4)}</td>
+          <td style="text-align:right;font-family:monospace">${r.pctT.toFixed(1)}</td>
+          <td style="text-align:center">${r.included ? '✓ Incluída' : '✗ Rejeitada'}</td>
+        </tr>`).join('')
+    : '<tr><td colspan="4" style="text-align:center;color:#999">Triplicata não realizada.</td></tr>';
+
+  /* ── Calc block ── */
+  let calcBlock = 'Triplicata não aceita.';
+  if (triHasData && mean !== null) {
+    const included = tripl.filter(r => r.included);
+    const labels   = included.map(r => r.label).join(', ');
+    const absVals  = included.map(r => r.abs.toFixed(4));
+    const expr     = included.length === 1
+      ? absVals[0]
+      : `(${absVals.join(' + ')}) / ${included.length}`;
+
+    calcBlock = `
+      Incluídas: ${labels}<br>
+      Média = ${expr} = ${mean.toFixed(4)} Abs<br>
+      ${included.length > 1 ? `DP = ${sd.toFixed(5)} &nbsp;&nbsp; CV = ${cv.toFixed(2)}%<br>` : ''}
+      Fator = ${stdConc} / ${mean.toFixed(4)} = <strong>${fator ? fator.toFixed(2) : '—'} ${unit}/Abs</strong>
+    `;
+  }
+
+  /* ── Curve table ── */
+  let curveBlock = '<p style="color:#999">Nenhuma curva selecionada.</p>';
+  if (selCurve) {
+    const rows = selCurve.points.map((p, i) => `
+      <tr>
+        <td>${i === 0 ? 'Branco' : 'P' + i}</td>
+        <td style="text-align:right">${p.conc}</td>
+        <td style="text-align:right;font-family:monospace">${p.abs.toFixed(4)}</td>
+      </tr>`).join('');
+    curveBlock = `
+      <p><strong>Curva ${selCurve.label}</strong></p>
+      <table><thead><tr><th>Padrão</th><th>Conc. (${unit})</th><th>Abs</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+  }
+
+  /* ── Results table ── */
+  const resultsBlock = state.results.length
+    ? `<table>
+        <thead><tr>
+          <th>#</th><th>Amostra</th><th>λ (nm)</th><th>Abs</th><th>%T</th>
+          <th>Fator</th><th>Conc. (${unit})</th><th>Classificação</th>
+        </tr></thead>
+        <tbody>
+          ${state.results.map(r => {
+            const ref = classifyResult(r);
+            return `<tr>
+              <td style="text-align:right">${r.n}</td>
+              <td>${r.name}</td>
+              <td style="text-align:right">${r.lambda}</td>
+              <td style="text-align:right;font-family:monospace">${r.abs.toFixed(4)}</td>
+              <td style="text-align:right;font-family:monospace">${r.pctT.toFixed(1)}</td>
+              <td style="text-align:right;font-family:monospace">${r.fator.toFixed(2)}</td>
+              <td style="text-align:right;font-family:monospace">${r.conc.toFixed(2)}</td>
+              <td>${ref ? ref.label : '—'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`
+    : '<p style="color:#999">Nenhuma amostra analisada.</p>';
+
+  /* ── Full report HTML ── */
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Relatório — ${assay} — ${dateStr}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Times New Roman', serif;
+      font-size: 11pt;
+      color: #111;
+      padding: 2cm;
+      max-width: 21cm;
+      margin: 0 auto;
+    }
+    h1 { font-size: 14pt; text-align: center; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4pt; }
+    h2 { font-size: 11pt; text-transform: uppercase; letter-spacing: 0.5px; margin: 16pt 0 6pt; border-bottom: 1px solid #ccc; padding-bottom: 3pt; }
+    .header-block { text-align: center; margin-bottom: 16pt; border-bottom: 2px solid #222; padding-bottom: 12pt; }
+    .header-block p { font-size: 9pt; color: #555; margin-top: 3pt; }
+    .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4pt 16pt; margin-bottom: 4pt; }
+    .meta-row { display: flex; gap: 6pt; font-size: 10pt; }
+    .meta-key { font-weight: bold; min-width: 110pt; }
+    table { width: 100%; border-collapse: collapse; margin: 6pt 0; font-size: 10pt; }
+    th { background: #eee; font-weight: bold; text-align: left; padding: 4pt 6pt; border: 1pt solid #bbb; }
+    td { padding: 3pt 6pt; border: 1pt solid #ccc; }
+    .calc-box { background: #f8f8f8; border: 1pt solid #ccc; padding: 8pt; font-family: monospace; font-size: 10pt; line-height: 1.8; }
+    .ref-normal { color: #228B22; font-weight: bold; }
+    .ref-hypo   { color: #cc4400; font-weight: bold; }
+    .ref-pre    { color: #998800; font-weight: bold; }
+    .ref-diab   { color: #cc0000; font-weight: bold; }
+    .footer { margin-top: 32pt; border-top: 1pt solid #ccc; padding-top: 12pt; display: grid; grid-template-columns: 1fr 1fr; gap: 20pt; }
+    .sig-line { border-bottom: 1pt solid #333; height: 32pt; margin-bottom: 4pt; }
+    .sig-label { font-size: 9pt; text-align: center; color: #555; }
+    @media print { body { padding: 1cm; } }
+  </style>
+</head>
+<body>
+  <div class="header-block">
+    <h1>Relatório de Análise Bioquímica</h1>
+    <p>Simulador Didático de Espectrofotometria — Bioquímica Clínica</p>
+  </div>
+
+  <h2>Dados da Corrida</h2>
+  <div class="meta-grid">
+    <div class="meta-row"><span class="meta-key">Data:</span><span>${dateStr}</span></div>
+    <div class="meta-row"><span class="meta-key">Hora:</span><span>${timeStr}</span></div>
+    <div class="meta-row"><span class="meta-key">Ensaio:</span><span>${assay}</span></div>
+    <div class="meta-row"><span class="meta-key">Analito:</span><span>${state.mode === 'glucose' ? 'Glicose' : state.analyteName}</span></div>
+    <div class="meta-row"><span class="meta-key">λ (nm):</span><span>${lambda} nm</span></div>
+    <div class="meta-row"><span class="meta-key">Padrão:</span><span>${stdConc} ${unit}</span></div>
+    <div class="meta-row"><span class="meta-key">Fator calc.:</span><span>${fator ? fator.toFixed(2) + ' ' + unit + '/Abs' : 'Não calculado'}</span></div>
+    <div class="meta-row"><span class="meta-key">Amostras:</span><span>${state.results.length}</span></div>
+  </div>
+
+  <h2>Triplicata do Padrão (${stdConc} ${unit})</h2>
+  <table>
+    <thead><tr><th>Leitura</th><th>Abs</th><th>%T</th><th>Status</th></tr></thead>
+    <tbody>${triplRows}</tbody>
+  </table>
+
+  <h2>Cálculo do Fator de Calibração</h2>
+  <div class="calc-box">${calcBlock}</div>
+
+  <h2>Curva de Calibração</h2>
+  ${curveBlock}
+
+  <h2>Resultados das Amostras</h2>
+  <p style="font-size:9pt;color:#777;margin-bottom:6pt">
+    Referência (glicemia em jejum): Normal 70–99 mg/dL · Hipoglicemia &lt;70 · Pré-diabetes 100–125 · Diabetes ≥126 mg/dL
+  </p>
+  ${resultsBlock}
+
+  <div class="footer">
+    <div>
+      <div class="sig-line"></div>
+      <div class="sig-label">Estudante / Analista</div>
+    </div>
+    <div>
+      <div class="sig-line"></div>
+      <div class="sig-label">Docente Responsável</div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank', 'width=900,height=700');
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 600);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   HELP MODAL
+   ═══════════════════════════════════════════════════════════════════ */
+function openHelp()  { document.getElementById('helpModal').classList.remove('hidden'); }
+function closeHelp() { document.getElementById('helpModal').classList.add('hidden'); }
+
+function handleModalClick(e) {
+  if (e.target === e.currentTarget) closeHelp();
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   DIAGRAM TOGGLE
+   ═══════════════════════════════════════════════════════════════════ */
+let diagramVisible = true;
+function toggleDiagram() {
+  diagramVisible = !diagramVisible;
+  const container = document.getElementById('diagramContainer');
+  const label     = document.getElementById('diagramToggleLabel');
+  container.classList.toggle('hidden', !diagramVisible);
+  label.textContent = (diagramVisible ? '▼' : '▶') + ' Diagrama do Equipamento';
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   HELPERS
+   ═══════════════════════════════════════════════════════════════════ */
+function getEpsilon() { return EPSILON_MAP[state.lambda] || 0.00300; }
+function getStdConc() { return state.mode === 'glucose' ? 100 : state.stdConc; }
+function getUnit()    { return state.mode === 'glucose' ? 'mg/dL' : state.unit; }
+function shuffled(arr) {
+  return [...arr].sort(() => Math.random() - 0.5);
+}
