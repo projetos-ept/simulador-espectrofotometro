@@ -992,8 +992,8 @@ function printReport() {
       </tr>`).join('');
     curveBlock = `
       <p><strong>Curva ${selCurve.label}</strong> &nbsp;·&nbsp; r = ${selCurve.r.toFixed(4)} &nbsp;·&nbsp; r² = ${selCurve.r2.toFixed(4)}</p>
-      <div style="display:flex;gap:16pt;align-items:flex-start;flex-wrap:wrap">
-        <table style="flex:none"><thead><tr><th>Padrão</th><th>Conc. (${unit})</th><th>Abs</th></tr></thead>
+      <div style="display:flex;gap:16pt;align-items:flex-start">
+        <table style="width:auto;flex:none"><thead><tr><th>Padrão</th><th>Conc. (${unit})</th><th>Abs</th></tr></thead>
         <tbody>${rows}</tbody></table>
         <div style="flex:none">${curveToReportSVG(selCurve, unit)}</div>
       </div>`;
