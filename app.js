@@ -696,7 +696,11 @@ function buildCurveCard(curve) {
     </div>`;
   card.appendChild(revealWrap);
 
-  // Points table
+  // Table + canvas side-by-side in a shared flex row
+  const bodyRow = document.createElement('div');
+  bodyRow.className = 'curve-body';
+
+  // Points table (left side)
   const tbl = document.createElement('table');
   tbl.className = 'curve-table';
   tbl.innerHTML = `
@@ -709,14 +713,16 @@ function buildCurveCard(curve) {
           <td class="num">${p.abs.toFixed(4)}</td>
         </tr>`).join('')}
     </tbody>`;
-  card.appendChild(tbl);
+  bodyRow.appendChild(tbl);
 
-  // Canvas scatter
+  // Canvas scatter (right side, height matches table ~7 rows ≈ 150 px)
   const canvas = document.createElement('canvas');
   canvas.className = 'scatter';
-  canvas.width  = 140;
-  canvas.height = 95;
-  card.appendChild(canvas);
+  canvas.width  = 118;
+  canvas.height = 150;
+  bodyRow.appendChild(canvas);
+
+  card.appendChild(bodyRow);
   requestAnimationFrame(() => drawScatter(canvas, points, r2));
 
   // Select button
