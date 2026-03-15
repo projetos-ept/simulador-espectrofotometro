@@ -11,11 +11,12 @@ const state = {
   calibrated:  false,
 
   // Triplicate standard
-  triplicateAttempt: 0,     // 0=not started, increments on each reading attempt
-  triplicateReadings: [],   // [{ label, abs, pctT, included }]
+  triplicateAttempt: 0,       // 0=not started, increments on each reading attempt
+  triplicateReadings: [],     // [{ label, abs, pctT, included }]
   triplicateMean:  null,
   triplicateSD:    null,
   triplicateCV:    null,
+  triplicateFailedAttempts: [], // [{ attempt, readings, cv, mean }] — saved on each retry
 
   fator:         null,
   fatorAccepted: false,
@@ -39,7 +40,7 @@ const state = {
    ═══════════════════════════════════════════════════════════════════ */
 const WAVELENGTHS  = [340, 405, 505, 540, 546, 570, 620, 670];
 const STD_POINTS   = [0, 25, 50, 100, 150, 200]; // calibration curve concentrations
-const CV_THRESHOLD = 5.0;  // % — max acceptable CV for triplicate
+const CV_THRESHOLD = 1.0;  // % — max acceptable CV for triplicate (clinical standard)
 
 // Approximate molar absorptivity per wavelength (simulated)
 const EPSILON_MAP = {
@@ -133,11 +134,12 @@ function doBlanco() {
   setLedState('yellow', 'Zerando…');
 
   setTimeout(() => {
-    state.calibrated      = true;
-    state.fator           = null;
-    state.fatorAccepted   = false;
-    state.triplicateAttempt  = 0;
-    state.triplicateReadings = [];
+    state.calibrated             = true;
+    state.fator                  = null;
+    state.fatorAccepted          = false;
+    state.triplicateAttempt      = 0;
+    state.triplicateReadings     = [];
+    state.triplicateFailedAttempts = [];
 
     setLedState('green', 'Pronto');
     setDisplay(0.0000, 100.0, null, null);
@@ -152,6 +154,32 @@ function doBlanco() {
 /* ═══════════════════════════════════════════════════════════════════
    CALIBRATION — TRIPLICATE STANDARD
    ═══════════════════════════════════════════════════════════════════ */
+/* Normal distribution sample via Box-Muller */
+function randn() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+/* Quick CV calc on raw readings array */
+function quickCV(readings) {
+  const vals = readings.map(r => r.abs);
+  const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+  if (vals.length < 2 || mean === 0) return 0;
+  const sd = Math.sqrt(vals.reduce((s, v) => s + (v - mean) ** 2, 0) / (vals.length - 1));
+  return (sd / mean) * 100;
+}
+
+/* Build one set of 3 readings at a given noise sigma (fraction of baseAbs) */
+function makeReadings(baseAbs, sigma) {
+  return [0, 1, 2].map((_, idx) => {
+    const abs  = Math.max(0.0001, baseAbs + randn() * baseAbs * sigma);
+    const pctT = 100 * Math.pow(10, -abs);
+    return { label: `P${idx + 1}`, abs, pctT, included: true };
+  });
+}
+
 function doLerPadrao() {
   if (!state.calibrated) { setStatus('Calibre com BRANCO primeiro.', 'err'); return; }
   if (state.mode === 'generic') syncGenericFields();
@@ -160,24 +188,28 @@ function doLerPadrao() {
   setTimeout(() => {
     state.triplicateAttempt++;
 
-    const stdConc = getStdConc();
-    const eps     = getEpsilon();
-    const baseAbs = stdConc * eps;
+    const baseAbs = getStdConc() * getEpsilon();
 
-    // On the first attempt, randomly introduce one outlier (60% chance)
-    const hasOutlier = state.triplicateAttempt === 1 && Math.random() < 0.6;
-    const outlierIdx = hasOutlier ? Math.floor(Math.random() * 3) : -1;
+    // 30% chance of elevated CV on the first attempt; retries are always clean
+    const wantHighCV = state.triplicateAttempt === 1 && Math.random() < 0.30;
 
-    const readings = [0, 1, 2].map(i => {
-      let abs = baseAbs + (Math.random() - 0.5) * baseAbs * 0.012; // ±0.6% noise
-      if (i === outlierIdx) {
-        // 20% deviation, direction randomised
-        abs *= Math.random() > 0.5 ? 1.20 : 0.80;
-      }
-      abs = Math.max(0.0001, abs);
-      const pctT = 100 * Math.pow(10, -abs);
-      return { label: `P${i + 1}`, abs, pctT, included: true };
-    });
+    let readings;
+    let iters = 0;
+
+    if (wantHighCV) {
+      // sigma chosen to produce CV roughly between 1.5% and 10%
+      const sigma = 0.025 + Math.random() * 0.075;
+      do {
+        readings = makeReadings(baseAbs, sigma);
+        iters++;
+      } while (quickCV(readings) <= CV_THRESHOLD && iters < 30);
+    } else {
+      // Clean reading: target sigma ≈ 0.3% → CV well below 1%
+      do {
+        readings = makeReadings(baseAbs, 0.003);
+        iters++;
+      } while (quickCV(readings) > CV_THRESHOLD && iters < 30);
+    }
 
     state.triplicateReadings = readings;
     setLedState('green', 'Pronto');
@@ -260,18 +292,16 @@ function updateTriplicateCalc() {
   const stdConc  = getStdConc();
   const unit     = getUnit();
   const fator    = stdConc / mean;
-  const cvBadge  = cv === 0 ? 'ok' : cv <= 2 ? 'ok' : cv <= CV_THRESHOLD ? 'warn' : 'bad';
+  // CV badge: excellent ≤ 0.5% | borderline 0.5–1.0% | failed > 1.0%
+  const cvBadge = cv <= 0.5 ? 'ok' : cv <= CV_THRESHOLD ? 'warn' : 'bad';
+  const cvLabel = cv <= 0.5 ? 'Excelente' : cv <= CV_THRESHOLD ? 'No limite' : 'Reprovado';
 
   // Build expression string
   const labels  = included.map(r => r.label);
   const absVals = included.map(r => r.abs.toFixed(4));
-
-  let mediaExpr = '';
-  if (included.length === 1) {
-    mediaExpr = `${absVals[0]}`;
-  } else {
-    mediaExpr = `(${absVals.join(' + ')}) / ${included.length}`;
-  }
+  const mediaExpr = included.length === 1
+    ? absVals[0]
+    : `(${absVals.join(' + ')}) / ${included.length}`;
 
   calcBox.innerHTML = `
     <div class="calc-line">
@@ -291,9 +321,9 @@ function updateTriplicateCalc() {
     </div>
     <div class="calc-line">
       <span class="calc-key">CV%</span>
-      <span class="calc-expr">(DP / Média) × 100</span>
+      <span class="calc-expr">(DP / Média) × 100 &nbsp;·&nbsp; critério ≤ ${CV_THRESHOLD}%</span>
       <span class="calc-result">${cv.toFixed(2)}%
-        <span class="cv-badge ${cvBadge}">${cvBadge === 'bad' ? 'Reprovado' : cvBadge === 'warn' ? 'Atenção' : 'Aprovado'}</span>
+        <span class="cv-badge ${cvBadge}">${cvLabel}</span>
       </span>
     </div>` : ''}
     <div class="calc-line" style="margin-top:4px">
@@ -307,13 +337,14 @@ function updateTriplicateCalc() {
   acceptBtn.disabled = !ok;
 
   if (cv > CV_THRESHOLD) {
-    statusEl.textContent = `CV ${cv.toFixed(1)}% > ${CV_THRESHOLD}% — rejeite a leitura discrepante ou refaça.`;
+    statusEl.innerHTML = `<strong>⚠ CV ${cv.toFixed(2)}% — REPROVADO</strong> (limite: ${CV_THRESHOLD}%). `
+      + `Imprecisão elevada. Verifique pipetagem, bolhas na cubeta, homogeneização e temperatura. Refaça a leitura.`;
     statusEl.className = 'tripl-status err';
-  } else if (cv > 2) {
-    statusEl.textContent = `CV ${cv.toFixed(1)}% — aceito, mas verifique a qualidade analítica.`;
+  } else if (cv > 0.5) {
+    statusEl.textContent = `CV ${cv.toFixed(2)}% — no limite aceitável (≤ ${CV_THRESHOLD}%). Considere refazer se possível.`;
     statusEl.className = 'tripl-status warn';
   } else {
-    statusEl.textContent = `CV ${cv.toFixed(1)}% — triplicata aprovada. ✓`;
+    statusEl.textContent = `CV ${cv.toFixed(2)}% — excelente precisão. Triplicata aprovada. ✓`;
     statusEl.className = 'tripl-status ok';
   }
 }
@@ -344,7 +375,15 @@ function aceitarTriplicata() {
 }
 
 function refazerTriplicata() {
-  // Re-read — on attempt 2+ there is no outlier
+  // Save the current (failed) attempt before retrying
+  if (state.triplicateCV !== null && state.triplicateReadings.length) {
+    state.triplicateFailedAttempts.push({
+      attempt:  state.triplicateAttempt,
+      readings: state.triplicateReadings.map(r => ({ ...r })),
+      cv:       state.triplicateCV,
+      mean:     state.triplicateMean,
+    });
+  }
   doLerPadrao();
 }
 
@@ -442,12 +481,13 @@ function setLedState(color, label) {
    RESET
    ═══════════════════════════════════════════════════════════════════ */
 function resetCalibration() {
-  state.calibrated      = false;
-  state.fator           = null;
-  state.fatorAccepted   = false;
-  state.triplicateAttempt  = 0;
-  state.triplicateReadings = [];
-  state.triplicateMean  = null;
+  state.calibrated               = false;
+  state.fator                    = null;
+  state.fatorAccepted            = false;
+  state.triplicateAttempt        = 0;
+  state.triplicateReadings       = [];
+  state.triplicateFailedAttempts = [];
+  state.triplicateMean           = null;
 
   setLedState('red');
   setDisplay(null, null, null, null);
@@ -767,9 +807,36 @@ function printReport() {
   const sd          = state.triplicateSD;
   const cv          = state.triplicateCV;
   const fator       = state.fator;
+  const failed      = state.triplicateFailedAttempts; // array of prior failed attempts
 
   // Selected curve
   const selCurve = state.generatedCurves.find(c => c.label === state.selectedCurveLabel);
+
+  /* ── Failed attempts block ── */
+  const failedBlock = failed.length ? `
+    <h2>Tentativas Reprovadas (CV &gt; ${CV_THRESHOLD}%)</h2>
+    ${failed.map(f => `
+      <div style="background:#fff8f8;border:1pt solid #cc6666;padding:8pt 10pt;margin:4pt 0;border-radius:2pt">
+        <strong>Tentativa ${f.attempt}</strong> &nbsp;·&nbsp;
+        CV = <strong style="color:#cc0000">${f.cv.toFixed(2)}%</strong>
+        &nbsp;·&nbsp; Média = ${f.mean ? f.mean.toFixed(4) : '—'} Abs
+        &mdash; <em>Reprovada, leitura repetida</em>
+        <table style="margin-top:6pt"><thead><tr><th>Leitura</th><th>Abs</th><th>%T</th></tr></thead>
+        <tbody>
+          ${f.readings.map(r => `<tr>
+            <td>${r.label}</td>
+            <td style="font-family:monospace;text-align:right">${r.abs.toFixed(4)}</td>
+            <td style="font-family:monospace;text-align:right">${r.pctT.toFixed(1)}</td>
+          </tr>`).join('')}
+        </tbody></table>
+      </div>`).join('')}` : '';
+
+  /* ── CV alert for accepted triplicata ── */
+  const cvAlertBlock = (triHasData && cv !== null && cv > 0.5 && cv <= CV_THRESHOLD) ? `
+    <div style="background:#fffbf0;border:1pt solid #cc9900;padding:6pt 10pt;margin:4pt 0;font-size:10pt">
+      <strong>⚠ Atenção:</strong> CV = ${cv.toFixed(2)}% está no limite do critério (≤ ${CV_THRESHOLD}%).
+      Recomenda-se monitorar a precisão analítica desta corrida.
+    </div>` : '';
 
   /* ── Triplicate rows HTML ── */
   const triplRows = triHasData
@@ -791,11 +858,13 @@ function printReport() {
     const expr     = included.length === 1
       ? absVals[0]
       : `(${absVals.join(' + ')}) / ${included.length}`;
+    const cvStatus = cv <= 0.5 ? 'Excelente' : cv <= CV_THRESHOLD ? 'Aprovado — no limite' : 'Reprovado';
 
     calcBlock = `
       Incluídas: ${labels}<br>
       Média = ${expr} = ${mean.toFixed(4)} Abs<br>
-      ${included.length > 1 ? `DP = ${sd.toFixed(5)} &nbsp;&nbsp; CV = ${cv.toFixed(2)}%<br>` : ''}
+      ${included.length > 1 ? `DP = ${sd.toFixed(5)} &nbsp;&nbsp; CV = <strong>${cv.toFixed(2)}%</strong> — ${cvStatus}<br>` : ''}
+      Critério de aceitação: CV ≤ ${CV_THRESHOLD}%<br>
       Fator = ${stdConc} / ${mean.toFixed(4)} = <strong>${fator ? fator.toFixed(2) : '—'} ${unit}/Abs</strong>
     `;
   }
@@ -892,14 +961,18 @@ function printReport() {
     <div class="meta-row"><span class="meta-key">λ (nm):</span><span>${lambda} nm</span></div>
     <div class="meta-row"><span class="meta-key">Padrão:</span><span>${stdConc} ${unit}</span></div>
     <div class="meta-row"><span class="meta-key">Fator calc.:</span><span>${fator ? fator.toFixed(2) + ' ' + unit + '/Abs' : 'Não calculado'}</span></div>
-    <div class="meta-row"><span class="meta-key">Amostras:</span><span>${state.results.length}</span></div>
+    <div class="meta-row"><span class="meta-key">Tentativas:</span><span>${state.triplicateAttempt} (${failed.length} reprovada${failed.length !== 1 ? 's' : ''})</span></div>
+  <div class="meta-row"><span class="meta-key">Amostras:</span><span>${state.results.length}</span></div>
   </div>
 
-  <h2>Triplicata do Padrão (${stdConc} ${unit})</h2>
+  ${failedBlock}
+
+  <h2>Triplicata do Padrão Aceita — Tentativa ${state.triplicateAttempt} (${stdConc} ${unit})</h2>
   <table>
     <thead><tr><th>Leitura</th><th>Abs</th><th>%T</th><th>Status</th></tr></thead>
     <tbody>${triplRows}</tbody>
   </table>
+  ${cvAlertBlock}
 
   <h2>Cálculo do Fator de Calibração</h2>
   <div class="calc-box">${calcBlock}</div>
