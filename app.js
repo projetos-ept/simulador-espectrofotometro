@@ -830,7 +830,7 @@ function drawScatter(canvas, points, r2 = 0) {
    CALIBRATION CURVE → SVG (for print report)
    ═══════════════════════════════════════════════════════════════════ */
 function curveToReportSVG(curve, unitLabel) {
-  const W = 230, H = 170;
+  const W = 260, H = 192;
   const pad = { top: 12, right: 12, bottom: 32, left: 40 };
   const pW = W - pad.left - pad.right;
   const pH = H - pad.top - pad.bottom;
@@ -992,10 +992,12 @@ function printReport() {
       </tr>`).join('');
     curveBlock = `
       <p><strong>Curva ${selCurve.label}</strong> &nbsp;·&nbsp; r = ${selCurve.r.toFixed(4)} &nbsp;·&nbsp; r² = ${selCurve.r2.toFixed(4)}</p>
-      <div style="display:flex;gap:16pt;align-items:flex-start">
-        <table style="width:auto;flex:none"><thead><tr><th>Padrão</th><th>Conc. (${unit})</th><th>Abs</th></tr></thead>
-        <tbody>${rows}</tbody></table>
-        <div style="flex:none">${curveToReportSVG(selCurve, unit)}</div>
+      <div style="display:flex;justify-content:center">
+        <div style="display:inline-flex;gap:16pt;align-items:flex-end">
+          <table style="width:auto;flex:none"><thead><tr><th>Padrão</th><th>Conc. (${unit})</th><th>Abs</th></tr></thead>
+          <tbody>${rows}</tbody></table>
+          <div style="flex:none">${curveToReportSVG(selCurve, unit)}</div>
+        </div>
       </div>`;
   }
 
