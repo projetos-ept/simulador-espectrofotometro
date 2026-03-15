@@ -46,13 +46,26 @@
           <stop offset="0%"   stop-color="#f0c040" stop-opacity="0.55"/>
           <stop offset="100%" stop-color="#f0c040" stop-opacity="0"/>
         </radialGradient>
+        <linearGradient id="svgBg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%"   stop-color="#0a1a2e"/>
+          <stop offset="50%"  stop-color="#0e2238"/>
+          <stop offset="100%" stop-color="#091828"/>
+        </linearGradient>
+        <linearGradient id="benchGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stop-color="#0c2030" stop-opacity="0.7"/>
+          <stop offset="100%" stop-color="#071525" stop-opacity="0.7"/>
+        </linearGradient>
       </defs>
 
       <!-- Background -->
-      <rect width="820" height="175" fill="#0e0e0e" rx="0"/>
+      <rect width="820" height="175" fill="url(#svgBg)" rx="4"/>
+      <!-- Optical bench rail -->
+      <rect x="14" y="79" width="794" height="28" fill="url(#benchGrad)" rx="2"/>
+      <line x1="14" y1="79" x2="808" y2="79" stroke="#1c3a52" stroke-width="1"/>
+      <line x1="14" y1="107" x2="808" y2="107" stroke="#1c3a52" stroke-width="1"/>
 
       <!-- Title -->
-      <text x="410" y="16" text-anchor="middle" fill="#333" font-size="9"
+      <text x="410" y="16" text-anchor="middle" fill="#3a7a98" font-size="9"
             font-family="'JetBrains Mono', monospace" letter-spacing="2">
         ESQUEMA ÓPTICO — ESPECTROFOTÔMETRO DE FEIXE SIMPLES (PRINCÍPIO DE BEER-LAMBERT)
       </text>
@@ -81,12 +94,12 @@
 
       <!-- I₀ and I labels above beam -->
       <text x="355" y="84" text-anchor="middle" fill="#33ff66" font-size="12"
-            font-style="italic" font-family="serif" opacity="0.7">I₀</text>
+            font-style="italic" font-family="serif" opacity="0.9">I₀</text>
       <text x="465" y="84" text-anchor="middle" fill="#33ff66" font-size="12"
-            font-style="italic" font-family="serif" opacity="0.4">I</text>
+            font-style="italic" font-family="serif" opacity="0.6">I</text>
 
       <!-- Beer-Lambert annotation -->
-      <text x="405" y="32" text-anchor="middle" fill="#1e4a1e" font-size="10"
+      <text x="405" y="32" text-anchor="middle" fill="#2a7858" font-size="10"
             font-family="'JetBrains Mono', monospace">A = log(I₀ / I) = ε · b · c</text>
 
       <!-- ─── 1. LAMP ─── -->
@@ -98,16 +111,16 @@
       <!-- Base -->
       <rect x="52" y="114" width="16" height="7" rx="1" fill="#333"/>
       <!-- Label -->
-      <text x="60" y="148" text-anchor="middle" fill="#555" font-size="9" font-family="monospace">LÂMPADA</text>
-      <text x="60" y="158" text-anchor="middle" fill="#333" font-size="8" font-family="monospace">W / D₂</text>
+      <text x="60" y="148" text-anchor="middle" fill="#6aaac8" font-size="9" font-family="monospace">LÂMPADA</text>
+      <text x="60" y="158" text-anchor="middle" fill="#3e7890" font-size="8" font-family="monospace">W / D₂</text>
 
       <!-- ─── 2. ENTRANCE SLIT ─── -->
       <rect x="150" y="66" width="10" height="54" fill="#222" stroke="#444" stroke-width="1"/>
       <rect x="150" y="66" width="10" height="19" fill="#0a0a0a"/>
       <rect x="150" y="101" width="10" height="19" fill="#0a0a0a"/>
       <line x1="155" y1="85" x2="155" y2="101" stroke="#f0c04050" stroke-width="2"/>
-      <text x="155" y="148" text-anchor="middle" fill="#555" font-size="9" font-family="monospace">FENDA</text>
-      <text x="155" y="158" text-anchor="middle" fill="#333" font-size="8" font-family="monospace">entrada</text>
+      <text x="155" y="148" text-anchor="middle" fill="#6aaac8" font-size="9" font-family="monospace">FENDA</text>
+      <text x="155" y="158" text-anchor="middle" fill="#3e7890" font-size="8" font-family="monospace">entrada</text>
 
       <!-- ─── 3. MONOCHROMATOR ─── -->
       <rect x="225" y="56" width="82" height="74" fill="#101020" stroke="#334" stroke-width="1.5" rx="3"/>
@@ -117,18 +130,18 @@
       <line x1="264" y1="62" x2="264" y2="124" stroke="#336" stroke-width="1"/>
       <line x1="274" y1="62" x2="274" y2="124" stroke="#336" stroke-width="1"/>
       <!-- λ symbol -->
-      <text x="266" y="100" text-anchor="middle" fill="#5566cc" font-size="18"
+      <text x="266" y="100" text-anchor="middle" fill="#8899ee" font-size="18"
             font-style="italic" font-family="'Times New Roman', serif">λ</text>
-      <text x="266" y="148" text-anchor="middle" fill="#555" font-size="9" font-family="monospace">MONOCROMADOR</text>
-      <text x="266" y="158" text-anchor="middle" fill="#333" font-size="8" font-family="monospace">grade de difração</text>
+      <text x="266" y="148" text-anchor="middle" fill="#6aaac8" font-size="9" font-family="monospace">MONOCROMADOR</text>
+      <text x="266" y="158" text-anchor="middle" fill="#3e7890" font-size="8" font-family="monospace">grade de difração</text>
 
       <!-- ─── 4. EXIT SLIT ─── -->
       <rect x="308" y="66" width="10" height="54" fill="#222" stroke="#444" stroke-width="1"/>
       <rect x="308" y="66" width="10" height="19" fill="#0a0a0a"/>
       <rect x="308" y="101" width="10" height="19" fill="#0a0a0a"/>
       <line x1="313" y1="85" x2="313" y2="101" stroke="#33ff6650" stroke-width="2"/>
-      <text x="313" y="148" text-anchor="middle" fill="#555" font-size="9" font-family="monospace">FENDA</text>
-      <text x="313" y="158" text-anchor="middle" fill="#333" font-size="8" font-family="monospace">saída</text>
+      <text x="313" y="148" text-anchor="middle" fill="#6aaac8" font-size="9" font-family="monospace">FENDA</text>
+      <text x="313" y="158" text-anchor="middle" fill="#3e7890" font-size="8" font-family="monospace">saída</text>
 
       <!-- ─── 5. CUVETTE ─── -->
       <rect x="380" y="63" width="50" height="60" fill="#081508" stroke="#0f2e0f" stroke-width="1" rx="1"/>
@@ -139,8 +152,8 @@
       <line x1="380" y1="93" x2="430" y2="93" stroke="#33ff6640" stroke-width="2"/>
       <!-- cuvette cap -->
       <rect x="390" y="63" width="20" height="5" fill="#222" rx="1"/>
-      <text x="405" y="148" text-anchor="middle" fill="#555" font-size="9" font-family="monospace">CUBETA</text>
-      <text x="405" y="158" text-anchor="middle" fill="#333" font-size="8" font-family="monospace">porta-amostra</text>
+      <text x="405" y="148" text-anchor="middle" fill="#6aaac8" font-size="9" font-family="monospace">CUBETA</text>
+      <text x="405" y="158" text-anchor="middle" fill="#3e7890" font-size="8" font-family="monospace">porta-amostra</text>
 
       <!-- ─── 6. PHOTODETECTOR ─── -->
       <circle cx="524" cy="93" r="24" fill="#101020" stroke="#334" stroke-width="1.5"/>
@@ -149,8 +162,8 @@
       <line x1="531" y1="82" x2="531" y2="104" stroke="#33ff66" stroke-width="2" opacity="0.6"/>
       <line x1="513" y1="86" x2="508" y2="82" stroke="#444" stroke-width="1"/>
       <line x1="513" y1="100" x2="508" y2="104" stroke="#444" stroke-width="1"/>
-      <text x="524" y="148" text-anchor="middle" fill="#555" font-size="9" font-family="monospace">FOTODETECTOR</text>
-      <text x="524" y="158" text-anchor="middle" fill="#333" font-size="8" font-family="monospace">fotodiodo</text>
+      <text x="524" y="148" text-anchor="middle" fill="#6aaac8" font-size="9" font-family="monospace">FOTODETECTOR</text>
+      <text x="524" y="158" text-anchor="middle" fill="#3e7890" font-size="8" font-family="monospace">fotodiodo</text>
 
       <!-- ─── 7. DISPLAY ─── -->
       <rect x="606" y="58" width="96" height="70" fill="#081508" stroke="#0f2e0f" stroke-width="1.5" rx="3"/>
@@ -161,13 +174,12 @@
             font-family="'JetBrains Mono', monospace">%T   48.7</text>
       <text x="654" y="112" text-anchor="middle" fill="#1c6634" font-size="10"
             font-family="'JetBrains Mono', monospace">100.0 mg/dL</text>
-      <text x="654" y="148" text-anchor="middle" fill="#555" font-size="9" font-family="monospace">DISPLAY</text>
-      <text x="654" y="158" text-anchor="middle" fill="#333" font-size="8" font-family="monospace">leitura digital</text>
+      <text x="654" y="148" text-anchor="middle" fill="#6aaac8" font-size="9" font-family="monospace">DISPLAY</text>
+      <text x="654" y="158" text-anchor="middle" fill="#3e7890" font-size="8" font-family="monospace">leitura digital</text>
 
       <!-- ─── Instrument body outline ─── -->
-      <rect x="26" y="48" width="750" height="86" fill="none" stroke="#1a1a1a" stroke-width="1"
+      <rect x="26" y="48" width="750" height="86" fill="none" stroke="#1e4060" stroke-width="1"
             stroke-dasharray="6,4" rx="4"/>
-      <text x="776" y="95" fill="#1e1e1e" font-size="9" font-family="monospace">╗</text>
     </svg>
   </div>
 </div>
@@ -330,11 +342,52 @@
     </div>
 
     <p class="hint-text">
-      Três curvas são boas (R² &gt; 0.99) e uma apresenta problema (outlier, platô ou dispersão alta).
-      Identifique-a e clique em uma curva para selecioná-la para o relatório.
+      Duas curvas são aprovadas (R² ≥ 0.995) e duas apresentam problemas (outlier, platô ou dispersão).
+      Identifique as reprovadas e selecione uma curva aprovada para o relatório.
     </p>
 
     <div class="curves-body">
+
+      <!-- Didactic criteria block -->
+      <div class="criteria-block">
+        <h3>Critérios de Seleção da Curva de Calibração</h3>
+        <div class="criteria-grid">
+
+          <div class="criteria-item">
+            <h4>Coeficiente de Correlação de Pearson (r)</h4>
+            <p>Mede o grau de linearidade entre Absorbância e Concentração. Varia de 0 (sem correlação) a 1 (correlação perfeita).</p>
+            <code class="criteria-formula">r = Σ[(xᵢ−x̄)(yᵢ−ȳ)] / √[Σ(xᵢ−x̄)² · Σ(yᵢ−ȳ)²]</code>
+          </div>
+
+          <div class="criteria-item">
+            <h4>Coeficiente de Determinação (R²)</h4>
+            <p>R² = r² &mdash; proporção da variação em Absorbância explicada pela Concentração. R² = 0.9970 significa que 99,70% da variação segue a reta.</p>
+            <code class="criteria-formula">R² = 1 − (SS_res / SS_tot)</code>
+            <div class="criteria-threshold">R² ≥ 0.995 &rarr; Curva aprovada para uso clínico</div>
+          </div>
+
+          <div class="criteria-item">
+            <h4>Problemas que reprovam a curva</h4>
+            <ul class="criteria-list">
+              <li><strong class="c-bad">Outlier</strong> &mdash; ponto discrepante por erro de pipetagem ou contaminação; afasta um ponto da reta.</li>
+              <li><strong class="c-warn">Platô</strong> &mdash; saturação em altas concentrações; curva perde a linearidade.</li>
+              <li><strong class="c-warn">Dispersão</strong> &mdash; imprecisão sistemática; verificar técnica, reagentes e temperatura.</li>
+            </ul>
+          </div>
+
+          <div class="criteria-item">
+            <h4>Conduta ao reprovar a curva</h4>
+            <ul class="criteria-list">
+              <li>Identificar e corrigir a causa raiz (pipeta, calibrador, reagente).</li>
+              <li>Repetir a leitura de todos os padrões.</li>
+              <li>Recalcular R² — somente R² ≥ 0.995 libera resultados.</li>
+              <li>Registrar a não conformidade no controle de qualidade.</li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+
       <div class="curves-grid" id="curvesGrid">
         <div class="curves-empty">Clique em "Gerar Curvas" para iniciar.</div>
       </div>

@@ -756,6 +756,132 @@ td.lbl { color: var(--text); }
 .curve-select-btn:hover { border-color: var(--accent-dim); color: var(--accent); }
 .curve-select-btn.selected { border-color: var(--accent); color: var(--accent); background: rgba(240,192,64,0.07); }
 
+/* ── R² badge (on curve cards) ──────────────────────────────────── */
+.r2-badge {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.73rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 10px;
+  margin: 3px 0 7px;
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+
+.r2-badge.ok  {
+  background: rgba(51,204,102,0.10);
+  color: #44cc77;
+  border: 1px solid rgba(51,204,102,0.22);
+}
+
+.r2-badge.bad {
+  background: rgba(232,64,64,0.10);
+  color: #ee5555;
+  border: 1px solid rgba(232,64,64,0.22);
+}
+
+/* ── Criteria didactic block ────────────────────────────────────── */
+.criteria-block {
+  background: #101d2a;
+  border: 1px solid #1a3048;
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.criteria-block h3 {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: #5a9ab8;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.criteria-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.criteria-item {
+  background: #0b1620;
+  border: 1px solid #162840;
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
+.criteria-item h4 {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 6px;
+  letter-spacing: 0.04em;
+}
+
+.criteria-item p {
+  font-size: 0.78rem;
+  color: #8aabb8;
+  line-height: 1.6;
+  margin-bottom: 6px;
+}
+
+.criteria-formula {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--lcd-text);
+  background: #071208;
+  border: 1px solid #0d2010;
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  margin: 6px 0;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
+}
+
+.criteria-threshold {
+  display: inline-block;
+  background: rgba(51,204,102,0.08);
+  border: 1px solid rgba(51,204,102,0.20);
+  border-radius: var(--radius);
+  padding: 4px 10px;
+  margin-top: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--success);
+  font-family: var(--font-mono);
+}
+
+.criteria-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.criteria-list li {
+  font-size: 0.76rem;
+  color: #8aabb8;
+  line-height: 1.65;
+  padding-left: 10px;
+  position: relative;
+}
+
+.criteria-list li::before {
+  content: '›';
+  position: absolute;
+  left: 0;
+  color: var(--text-faint);
+}
+
+.c-bad  { color: var(--danger); }
+.c-warn { color: var(--warn); }
+
+@media (max-width: 640px) {
+  .criteria-grid { grid-template-columns: 1fr; }
+}
+
 canvas.scatter {
   display: block;
   margin: 0 auto;
