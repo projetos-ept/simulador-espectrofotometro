@@ -848,6 +848,53 @@ td.lbl { color: var(--text); }
   border: 1px solid rgba(232,64,64,0.22);
 }
 
+/* ── r / r² reveal panel ────────────────────────────────────────── */
+.r-reveal-wrap { margin-top: 6px; }
+
+.r-reveal-btn {
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 0.70rem;
+  font-style: italic;
+  color: var(--text-faint);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.r-reveal-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+.r-values {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--lcd-text);
+  animation: fadeIn 0.2s ease;
+}
+
+.r-values.hidden { display: none; }
+
+.r-values .r-interp {
+  font-family: var(--font-main);
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  font-style: italic;
+  margin-top: 2px;
+}
+
 /* ── Criteria didactic block ────────────────────────────────────── */
 .criteria-block {
   background: #101d2a;

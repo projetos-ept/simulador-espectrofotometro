@@ -190,15 +190,15 @@ function doLerPadrao() {
 
     const baseAbs = getStdConc() * getEpsilon();
 
-    // 30% chance of elevated CV on the first attempt; retries are always clean
-    const wantHighCV = state.triplicateAttempt === 1 && Math.random() < 0.30;
+    // 20% chance of elevated CV on the first attempt (CV 1–6%); retries are always clean
+    const wantHighCV = state.triplicateAttempt === 1 && Math.random() < 0.20;
 
     let readings;
     let iters = 0;
 
     if (wantHighCV) {
-      // sigma chosen to produce CV roughly between 1.5% and 10%
-      const sigma = 0.025 + Math.random() * 0.075;
+      // sigma scaled so expected CV lands between ~1% and ~6%
+      const sigma = 0.013 + Math.random() * 0.045;
       do {
         readings = makeReadings(baseAbs, sigma);
         iters++;
@@ -569,11 +569,12 @@ function generateCurves() {
 
   const labels = ['A', 'B', 'C', 'D'];
 
-  // Exactly 2 bad and 2 good curves at random positions
+  // Exactly 2 bad and 2 good curves, positions fully randomised
   const positions = shuffled([0, 1, 2, 3]);
   const badSet    = new Set([positions[0], positions[1]]);
   const badTypes  = shuffled(['outlier', 'plateau', 'dispersion', 'outlier']);
-  const goodEps   = shuffled([0.0028, 0.0031, 0.0035, 0.0040]);
+  // Good curves vary slightly around the measured anchor (±1–3%)
+  const goodVars  = shuffled([0.97, 0.99, 1.01, 1.03]);
 
   let badCount = 0, goodCount = 0;
   state.generatedCurves = [];
@@ -582,7 +583,7 @@ function generateCurves() {
     const isBad  = badSet.has(i);
     const points = isBad
       ? generateBadCurveSafe(badTypes[badCount++])
-      : generateGoodCurveSafe(goodEps[goodCount++]);
+      : generateGoodCurveSafe(goodVars[goodCount++]);
     const { r, r2 } = calcR2(points);
     const curve = { label, points, isBad, r, r2 };
     state.generatedCurves.push(curve);
@@ -590,9 +591,17 @@ function generateCurves() {
   });
 }
 
-function generateGoodCurve(epsilon) {
+/**
+ * Good calibration curve anchored to the measured triplicateMean.
+ * @param {number} variationFactor - multiplier around the anchor (e.g. 0.97–1.03)
+ *   so the two approved curves have slightly different slopes for the student to compare.
+ */
+function generateGoodCurve(variationFactor) {
+  // Anchor: P at stdConc should produce absorbance close to state.triplicateMean
+  const anchorAbs = state.triplicateMean || (getStdConc() * getEpsilon());
+  const eps = (anchorAbs / getStdConc()) * variationFactor;
   return STD_POINTS.map(c => {
-    const abs = Math.max(0, c * epsilon + (Math.random() - 0.5) * c * epsilon * 0.015);
+    const abs = Math.max(0, c * eps + (Math.random() - 0.5) * c * eps * 0.015);
     return { conc: c, abs };
   });
 }
@@ -641,9 +650,9 @@ function calcR2(points) {
 }
 
 /* Wrappers that guarantee R² meets the acceptance criterion */
-function generateGoodCurveSafe(epsilon) {
+function generateGoodCurveSafe(variationFactor) {
   let pts, stats;
-  do { pts = generateGoodCurve(epsilon); stats = calcR2(pts); }
+  do { pts = generateGoodCurve(variationFactor); stats = calcR2(pts); }
   while (stats.r2 < 0.995);
   return pts;
 }
@@ -667,11 +676,25 @@ function buildCurveCard(curve) {
   title.textContent = `Curva ${label}`;
   card.appendChild(title);
 
-  // R² badge
+  // Approval status (r / r² stay hidden until student clicks to reveal)
   const badge = document.createElement('div');
   badge.className = `r2-badge ${r2 >= 0.995 ? 'ok' : 'bad'}`;
-  badge.innerHTML = `R² = ${r2.toFixed(4)} &nbsp;${r2 >= 0.995 ? '✓ Aprovada' : '✗ Reprovada'}`;
+  badge.textContent = r2 >= 0.995 ? '✓ Aprovada' : '✗ Reprovada';
   card.appendChild(badge);
+
+  // r / r² reveal panel
+  const revealWrap = document.createElement('div');
+  revealWrap.className = 'r-reveal-wrap';
+  revealWrap.innerHTML = `
+    <button class="r-reveal-btn" onclick="revealCorr(this)">
+      Analisar a correlação linear desta curva →
+    </button>
+    <div class="r-values hidden">
+      <span>r&nbsp;=&nbsp;<strong>${curve.r.toFixed(4)}</strong></span>
+      <span>r²&nbsp;=&nbsp;<strong>${r2.toFixed(4)}</strong></span>
+      <span class="r-interp">${r2 >= 0.995 ? 'Correlação excelente — aprovada (r² ≥ 0,995)' : 'Correlação insuficiente — reprovada (r² < 0,995)'}</span>
+    </div>`;
+  card.appendChild(revealWrap);
 
   // Points table
   const tbl = document.createElement('table');
@@ -707,6 +730,15 @@ function buildCurveCard(curve) {
   card.onclick = () => selectCurve(label);
 
   return card;
+}
+
+function revealCorr(btn) {
+  const valDiv = btn.nextElementSibling;
+  const hidden = valDiv.classList.contains('hidden');
+  valDiv.classList.toggle('hidden', !hidden);
+  btn.textContent = hidden
+    ? '▲ Ocultar correlação'
+    : 'Analisar a correlação linear desta curva →';
 }
 
 function selectCurve(label) {
@@ -786,6 +818,80 @@ function drawScatter(canvas, points, r2 = 0) {
   ctx.font = 'bold 7px monospace';
   ctx.textAlign = 'left';
   ctx.fillText(`R²=${r2.toFixed(4)}`, pad.left + 2, pad.top + 8);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CALIBRATION CURVE → SVG (for print report)
+   ═══════════════════════════════════════════════════════════════════ */
+function curveToReportSVG(curve, unitLabel) {
+  const W = 230, H = 170;
+  const pad = { top: 12, right: 12, bottom: 32, left: 40 };
+  const pW = W - pad.left - pad.right;
+  const pH = H - pad.top - pad.bottom;
+  const pts = curve.points;
+
+  const maxC = Math.max(...pts.map(p => p.conc));
+  const maxA = Math.max(...pts.map(p => p.abs), 0.001) * 1.15;
+
+  const tx = c => pad.left + (c / maxC) * pW;
+  const ty = a => H - pad.bottom - (a / maxA) * pH;
+
+  // Linear regression for trend line
+  const n = pts.length;
+  const xs = pts.map(p => p.conc), ys = pts.map(p => p.abs);
+  const xb = xs.reduce((a, b) => a + b, 0) / n;
+  const yb = ys.reduce((a, b) => a + b, 0) / n;
+  const ssxy = xs.reduce((s, x, i) => s + (x - xb) * (ys[i] - yb), 0);
+  const ssxx = xs.reduce((s, x) => s + (x - xb) ** 2, 0);
+  const slope = ssxx ? ssxy / ssxx : 0;
+  const intercept = yb - slope * xb;
+  const lx1 = tx(0), ly1 = ty(intercept);
+  const lx2 = tx(maxC), ly2 = ty(slope * maxC + intercept);
+
+  // Y-axis ticks (4 steps)
+  const yStep = maxA / 4;
+  const yTicks = Array.from({ length: 5 }, (_, i) => {
+    const a = yStep * i;
+    const y = ty(a).toFixed(1);
+    return `<line x1="${pad.left - 4}" y1="${y}" x2="${pad.left}" y2="${y}" stroke="#888"/>
+            <text x="${pad.left - 6}" y="${y}" text-anchor="end" dominant-baseline="middle" font-size="7" fill="#555">${a.toFixed(2)}</text>`;
+  }).join('');
+
+  // X-axis ticks
+  const xTickVals = [0, 50, 100, 150, 200].filter(v => v <= maxC);
+  const xTicks = xTickVals.map(c => {
+    const x = tx(c).toFixed(1);
+    const yb2 = (H - pad.bottom).toFixed(1);
+    return `<line x1="${x}" y1="${yb2}" x2="${x}" y2="${parseFloat(yb2) + 4}" stroke="#888"/>
+            <text x="${x}" y="${parseFloat(yb2) + 12}" text-anchor="middle" font-size="7" fill="#555">${c}</text>`;
+  }).join('');
+
+  const dotColor = curve.isBad ? '#cc3333' : '#1a7a1a';
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"
+        style="border:1pt solid #ccc;border-radius:3pt;background:#fafafa;font-family:sans-serif">
+    <!-- grid lines -->
+    ${Array.from({ length: 5 }, (_, i) => {
+      const y = ty(yStep * i).toFixed(1);
+      return `<line x1="${pad.left}" y1="${y}" x2="${W - pad.right}" y2="${y}" stroke="#e0e0e0"/>`;
+    }).join('')}
+    <!-- axes -->
+    <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${H - pad.bottom}" stroke="#444" stroke-width="1.2"/>
+    <line x1="${pad.left}" y1="${H - pad.bottom}" x2="${W - pad.right}" y2="${H - pad.bottom}" stroke="#444" stroke-width="1.2"/>
+    ${yTicks}
+    ${xTicks}
+    <!-- axis labels -->
+    <text x="${W / 2}" y="${H - 2}" text-anchor="middle" font-size="8" fill="#333">Concentração (${unitLabel})</text>
+    <text transform="rotate(-90,10,${H / 2})" x="0" y="${H / 2}" text-anchor="middle" font-size="8" fill="#333">Absorbância</text>
+    <!-- regression line -->
+    <line x1="${lx1.toFixed(1)}" y1="${ly1.toFixed(1)}" x2="${lx2.toFixed(1)}" y2="${ly2.toFixed(1)}"
+          stroke="#1a6ec4" stroke-width="1.4" stroke-dasharray="none"/>
+    <!-- data points -->
+    ${pts.map(p => `<circle cx="${tx(p.conc).toFixed(1)}" cy="${ty(p.abs).toFixed(1)}" r="3.5"
+          fill="${dotColor}" stroke="#fff" stroke-width="0.8"/>`).join('')}
+    <!-- r² annotation -->
+    <text x="${W - pad.right - 2}" y="${pad.top + 10}" text-anchor="end" font-size="8" fill="#333">r² = ${curve.r2.toFixed(4)}</text>
+  </svg>`;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -869,7 +975,7 @@ function printReport() {
     `;
   }
 
-  /* ── Curve table ── */
+  /* ── Curve table + SVG chart ── */
   let curveBlock = '<p style="color:#999">Nenhuma curva selecionada.</p>';
   if (selCurve) {
     const rows = selCurve.points.map((p, i) => `
@@ -879,9 +985,12 @@ function printReport() {
         <td style="text-align:right;font-family:monospace">${p.abs.toFixed(4)}</td>
       </tr>`).join('');
     curveBlock = `
-      <p><strong>Curva ${selCurve.label}</strong></p>
-      <table><thead><tr><th>Padrão</th><th>Conc. (${unit})</th><th>Abs</th></tr></thead>
-      <tbody>${rows}</tbody></table>`;
+      <p><strong>Curva ${selCurve.label}</strong> &nbsp;·&nbsp; r = ${selCurve.r.toFixed(4)} &nbsp;·&nbsp; r² = ${selCurve.r2.toFixed(4)}</p>
+      <div style="display:flex;gap:16pt;align-items:flex-start;flex-wrap:wrap">
+        <table style="flex:none"><thead><tr><th>Padrão</th><th>Conc. (${unit})</th><th>Abs</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+        <div style="flex:none">${curveToReportSVG(selCurve, unit)}</div>
+      </div>`;
   }
 
   /* ── Results table ── */
