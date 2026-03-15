@@ -1,1168 +1,373 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Espectrofotômetro Virtual</title>
-<style>
-  :root {
-    --bg:       #1a1a1a;
-    --surface:  #242424;
-    --surface2: #2e2e2e;
-    --lcd:      #0a1a0a;
-    --lcd-text: #33ff66;
-    --lcd-dim:  #1a7a33;
-    --accent:   #f0c040;
-    --accent2:  #c8a030;
-    --muted:    #777;
-    --border:   #333;
-    --red:      #ff4444;
-    --green:    #44ff88;
-    --yellow:   #ffcc00;
-    --text:     #cccccc;
-    --text-dim: #666;
-  }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
-    font-size: 14px;
-    min-height: 100vh;
-    padding: 16px;
-  }
-
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 16px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 16px;
-  }
-
-  header h1 {
-    font-size: 13px;
-    letter-spacing: 0.15em;
-    color: var(--accent);
-    text-transform: uppercase;
-  }
-
-  .help-btn {
-    background: none;
-    border: 1px solid var(--border);
-    color: var(--muted);
-    cursor: pointer;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    font-family: inherit;
-    font-size: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .help-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-  /* Tabs */
-  .tabs {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 16px;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 0;
-  }
-
-  .tab {
-    background: none;
-    border: 1px solid var(--border);
-    border-bottom: none;
-    color: var(--muted);
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 12px;
-    padding: 6px 16px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    transition: color 0.1s, background 0.1s;
-  }
-
-  .tab.active {
-    background: var(--surface);
-    color: var(--accent);
-    border-color: var(--border);
-    border-bottom-color: var(--surface);
-  }
-
-  .tab:hover:not(.active) { color: var(--text); }
-
-  /* Main layout */
-  .main-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 16px;
-  }
-
-  @media (max-width: 640px) {
-    .main-grid { grid-template-columns: 1fr; }
-  }
-
-  /* Panel */
-  .panel {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    padding: 14px;
-  }
-
-  .panel-title {
-    font-size: 10px;
-    letter-spacing: 0.2em;
-    color: var(--muted);
-    text-transform: uppercase;
-    margin-bottom: 12px;
-  }
-
-  /* LCD Display */
-  .display {
-    background: var(--lcd);
-    border: 1px solid #1a3a1a;
-    padding: 14px 16px;
-    margin-bottom: 14px;
-    position: relative;
-  }
-
-  .display-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: 6px;
-    line-height: 1.4;
-  }
-
-  .display-row:last-child { margin-bottom: 0; }
-
-  .display-label {
-    color: var(--lcd-dim);
-    font-size: 11px;
-    letter-spacing: 0.12em;
-    min-width: 60px;
-  }
-
-  .display-value {
-    color: var(--lcd-text);
-    font-size: 18px;
-    letter-spacing: 0.05em;
-    text-align: right;
-    flex: 1;
-  }
-
-  .display-value.small { font-size: 13px; }
-
-  .display-unit {
-    color: var(--lcd-dim);
-    font-size: 11px;
-    margin-left: 6px;
-    min-width: 50px;
-    text-align: left;
-  }
-
-  .display-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-  }
-
-  /* LED */
-  .led-wrap {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .led {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--red);
-    box-shadow: 0 0 6px var(--red);
-    transition: background 0.3s, box-shadow 0.3s;
-  }
-
-  .led.green  { background: var(--green);  box-shadow: 0 0 6px var(--green); }
-  .led.yellow { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
-
-  .led-label {
-    font-size: 10px;
-    color: var(--muted);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-
-  .wavelength-display {
-    font-size: 12px;
-    color: var(--lcd-dim);
-    letter-spacing: 0.1em;
-  }
-
-  /* Lambda selector */
-  .lambda-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-bottom: 12px;
-  }
-
-  .lambda-btn {
-    background: none;
-    border: 1px solid var(--border);
-    color: var(--muted);
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 11px;
-    padding: 4px 8px;
-    transition: all 0.1s;
-  }
-
-  .lambda-btn:hover { border-color: var(--accent2); color: var(--text); }
-  .lambda-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(240,192,64,0.08); }
-
-  /* Action buttons */
-  .action-btns {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  .btn {
-    background: none;
-    border: 1px solid var(--border);
-    color: var(--text);
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    padding: 8px 14px;
-    text-transform: uppercase;
-    transition: all 0.1s;
-    flex: 1;
-    min-width: 80px;
-  }
-
-  .btn:hover { border-color: var(--accent2); color: var(--accent); }
-
-  .btn.primary {
-    border-color: var(--accent2);
-    color: var(--accent);
-  }
-
-  .btn.primary:hover {
-    background: rgba(240,192,64,0.1);
-  }
-
-  .btn:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
-
-  .btn:disabled:hover {
-    border-color: var(--border);
-    color: var(--text);
-    background: none;
-  }
-
-  /* Generic mode fields */
-  .field-group {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-
-  .field-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .field-wrap label {
-    font-size: 10px;
-    color: var(--muted);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-
-  .field-wrap input {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--lcd-text);
-    font-family: inherit;
-    font-size: 13px;
-    padding: 5px 8px;
-    width: 100%;
-    outline: none;
-  }
-
-  .field-wrap input:focus { border-color: var(--accent2); }
-
-  /* Table */
-  .table-section {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    padding: 14px;
-    margin-bottom: 16px;
-  }
-
-  .section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .table-wrap {
-    overflow-x: auto;
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-  }
-
-  th {
-    text-align: left;
-    color: var(--muted);
-    font-weight: normal;
-    letter-spacing: 0.08em;
-    padding: 4px 8px;
-    border-bottom: 1px solid var(--border);
-    white-space: nowrap;
-    font-size: 11px;
-  }
-
-  td {
-    padding: 5px 8px;
-    border-bottom: 1px solid #222;
-    white-space: nowrap;
-  }
-
-  tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
-  tr:last-child td { border-bottom: none; }
-
-  td.num { color: var(--lcd-text); text-align: right; }
-  td.label-cell { color: var(--text); }
-
-  .table-empty {
-    text-align: center;
-    color: var(--text-dim);
-    padding: 16px;
-    font-size: 12px;
-  }
-
-  .btn-small {
-    background: none;
-    border: 1px solid var(--border);
-    color: var(--muted);
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 10px;
-    letter-spacing: 0.08em;
-    padding: 4px 10px;
-    text-transform: uppercase;
-    transition: all 0.1s;
-  }
-
-  .btn-small:hover { border-color: var(--accent2); color: var(--accent); }
-
-  /* Calibration curves */
-  .curves-section {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    padding: 14px;
-    margin-bottom: 16px;
-  }
-
-  .curves-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 10px;
-    margin-top: 14px;
-  }
-
-  @media (max-width: 900px) {
-    .curves-grid { grid-template-columns: repeat(2, 1fr); }
-  }
-
-  @media (max-width: 480px) {
-    .curves-grid { grid-template-columns: 1fr; }
-  }
-
-  .curve-card {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    padding: 10px;
-  }
-
-  .curve-card-title {
-    font-size: 11px;
-    color: var(--accent);
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    margin-bottom: 8px;
-    text-align: center;
-  }
-
-  .curve-table {
-    width: 100%;
-    font-size: 11px;
-    margin-bottom: 8px;
-  }
-
-  .curve-table th {
-    font-size: 10px;
-    padding: 2px 4px;
-  }
-
-  .curve-table td {
-    padding: 3px 4px;
-    font-size: 11px;
-  }
-
-  .curve-table td.num { font-size: 11px; }
-
-  canvas.scatter {
-    display: block;
-    margin: 0 auto;
-    border: 1px solid #333;
-    background: var(--lcd);
-  }
-
-  /* Feedback / toast */
-  .status-msg {
-    font-size: 11px;
-    color: var(--muted);
-    margin-top: 8px;
-    min-height: 16px;
-    letter-spacing: 0.06em;
-  }
-
-  .status-msg.ok   { color: var(--green); }
-  .status-msg.warn { color: var(--yellow); }
-  .status-msg.err  { color: var(--red); }
-
-  /* help modal */
-  .modal-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.8);
-    z-index: 100;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .modal-overlay.open { display: flex; }
-
-  .modal {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    padding: 24px;
-    max-width: 480px;
-    width: 90%;
-    max-height: 80vh;
-    overflow-y: auto;
-  }
-
-  .modal h2 {
-    font-size: 13px;
-    color: var(--accent);
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    margin-bottom: 14px;
-  }
-
-  .modal p, .modal li {
-    font-size: 12px;
-    color: var(--text);
-    line-height: 1.7;
-    margin-bottom: 6px;
-  }
-
-  .modal ol { padding-left: 18px; }
-
-  .modal-close {
-    margin-top: 16px;
-    width: 100%;
-  }
-
-  /* fator info */
-  .fator-display {
-    background: rgba(240,192,64,0.07);
-    border: 1px solid rgba(240,192,64,0.2);
-    padding: 6px 10px;
-    margin-bottom: 10px;
-    font-size: 12px;
-    color: var(--accent);
-    display: none;
-  }
-
-  .fator-display.visible { display: block; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Espectrofotômetro Virtual — Bioquímica Clínica</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
+<!-- ═══════════════════════════════════════════ HEADER ═══ -->
 <header>
-  <h1>Espectrofotômetro Virtual</h1>
-  <button class="help-btn" onclick="openHelp()">?</button>
+  <div class="header-left">
+    <h1>Espectrofotômetro Virtual</h1>
+    <p>Simulador Didático — Bioquímica Clínica</p>
+  </div>
+  <div class="header-actions">
+    <button class="icon-btn" onclick="printReport()" title="Imprimir Relatório">⎙</button>
+    <button class="icon-btn" onclick="openHelp()"   title="Ajuda">?</button>
+  </div>
 </header>
 
-<!-- Tabs -->
+<!-- ═══════════════════════════════════════════ SVG DIAGRAM ═══ -->
+<div class="diagram-section">
+  <button class="diagram-toggle" onclick="toggleDiagram()">
+    <span id="diagramToggleLabel">▼ Diagrama do Equipamento</span>
+  </button>
+  <div id="diagramContainer">
+    <!-- Spectrophotometer optical path diagram -->
+    <svg viewBox="0 0 820 175" xmlns="http://www.w3.org/2000/svg" class="spectro-svg"
+         aria-label="Diagrama óptico do espectrofotômetro de feixe simples">
+      <defs>
+        <marker id="arr-y" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+          <path d="M0,0 L0,8 L8,4 z" fill="#f0c040" opacity="0.7"/>
+        </marker>
+        <marker id="arr-g" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+          <path d="M0,0 L0,8 L8,4 z" fill="#33ff66" opacity="0.65"/>
+        </marker>
+        <marker id="arr-d" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+          <path d="M0,0 L0,8 L8,4 z" fill="#f0c040" opacity="0.45"/>
+        </marker>
+        <radialGradient id="lampGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"   stop-color="#f0c040" stop-opacity="0.55"/>
+          <stop offset="100%" stop-color="#f0c040" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+
+      <!-- Background -->
+      <rect width="820" height="175" fill="#0e0e0e" rx="0"/>
+
+      <!-- Title -->
+      <text x="410" y="16" text-anchor="middle" fill="#333" font-size="9"
+            font-family="'JetBrains Mono', monospace" letter-spacing="2">
+        ESQUEMA ÓPTICO — ESPECTROFOTÔMETRO DE FEIXE SIMPLES (PRINCÍPIO DE BEER-LAMBERT)
+      </text>
+
+      <!-- ─── BEAM LINES ─── -->
+      <!-- White light: lamp → entrance slit -->
+      <line x1="88" y1="93" x2="150" y2="93" stroke="#f0c040" stroke-width="3.5"
+            stroke-opacity="0.55" marker-end="url(#arr-y)"/>
+      <!-- White light: entrance slit → monochromator -->
+      <line x1="168" y1="93" x2="225" y2="93" stroke="#f0c040" stroke-width="3"
+            stroke-opacity="0.45" marker-end="url(#arr-y)"/>
+      <!-- Dispersed inside monochromator (fan of colors) -->
+      <line x1="273" y1="86" x2="302" y2="93" stroke="#44aaff" stroke-width="1.2" stroke-opacity="0.5"/>
+      <line x1="273" y1="90" x2="302" y2="93" stroke="#44ff88" stroke-width="1.2" stroke-opacity="0.6"/>
+      <line x1="273" y1="94" x2="302" y2="93" stroke="#ffcc44" stroke-width="1.2" stroke-opacity="0.5"/>
+      <line x1="273" y1="98" x2="302" y2="93" stroke="#ff6633" stroke-width="1.2" stroke-opacity="0.5"/>
+      <!-- Selected λ beam: exit slit → sample -->
+      <line x1="320" y1="93" x2="382" y2="93" stroke="#33ff66" stroke-width="3"
+            stroke-opacity="0.65" marker-end="url(#arr-g)"/>
+      <!-- Transmitted (attenuated): sample → detector -->
+      <line x1="428" y1="93" x2="502" y2="93" stroke="#33ff66" stroke-width="2"
+            stroke-opacity="0.35" marker-end="url(#arr-g)"/>
+      <!-- Signal: detector → display -->
+      <line x1="546" y1="93" x2="604" y2="93" stroke="#f0c040" stroke-width="1.5"
+            stroke-dasharray="4,3" stroke-opacity="0.55" marker-end="url(#arr-d)"/>
+
+      <!-- I₀ and I labels above beam -->
+      <text x="355" y="84" text-anchor="middle" fill="#33ff66" font-size="12"
+            font-style="italic" font-family="serif" opacity="0.7">I₀</text>
+      <text x="465" y="84" text-anchor="middle" fill="#33ff66" font-size="12"
+            font-style="italic" font-family="serif" opacity="0.4">I</text>
+
+      <!-- Beer-Lambert annotation -->
+      <text x="405" y="32" text-anchor="middle" fill="#1e4a1e" font-size="10"
+            font-family="'JetBrains Mono', monospace">A = log(I₀ / I) = ε · b · c</text>
+
+      <!-- ─── 1. LAMP ─── -->
+      <circle cx="60" cy="93" r="28" fill="url(#lampGlow)"/>
+      <circle cx="60" cy="93" r="22" fill="#1a1a10" stroke="#555" stroke-width="1.5"/>
+      <!-- Filament -->
+      <path d="M48 93 Q52 85 57 93 Q62 101 67 93 Q70 88 72 93"
+            stroke="#f0c040" stroke-width="1.5" fill="none"/>
+      <!-- Base -->
+      <rect x="52" y="114" width="16" height="7" rx="1" fill="#333"/>
+      <!-- Label -->
+      <text x="60" y="148" text-anchor="middle" fill="#555" font-size="9" font-family="monospace">LÂMPADA</text>
+      <text x="60" y="158" text-anchor="middle" fill="#333" font-size="8" font-family="monospace">W / D₂</text>
+
+      <!-- ─── 2. ENTRANCE SLIT ─── -->
+      <rect x="150" y="66" width="10" height="54" fill="#222" stroke="#444" stroke-width="1"/>
+      <rect x="150" y="66" width="10" height="19" fill="#0a0a0a"/>
+      <rect x="150" y="101" width="10" height="19" fill="#0a0a0a"/>
+      <line x1="155" y1="85" x2="155" y2="101" stroke="#f0c04050" stroke-width="2"/>
+      <text x="155" y="148" text-anchor="middle" fill="#555" font-size="9" font-family="monospace">FENDA</text>
+      <text x="155" y="158" text-anchor="middle" fill="#333" font-size="8" font-family="monospace">entrada</text>
+
+      <!-- ─── 3. MONOCHROMATOR ─── -->
+      <rect x="225" y="56" width="82" height="74" fill="#101020" stroke="#334" stroke-width="1.5" rx="3"/>
+      <!-- Grating lines -->
+      <line x1="244" y1="62" x2="244" y2="124" stroke="#336" stroke-width="1"/>
+      <line x1="254" y1="62" x2="254" y2="124" stroke="#336" stroke-width="1"/>
+      <line x1="264" y1="62" x2="264" y2="124" stroke="#336" stroke-width="1"/>
+      <line x1="274" y1="62" x2="274" y2="124" stroke="#336" stroke-width="1"/>
+      <!-- λ symbol -->
+      <text x="266" y="100" text-anchor="middle" fill="#5566cc" font-size="18"
+            font-style="italic" font-family="'Times New Roman', serif">λ</text>
+      <text x="266" y="148" text-anchor="middle" fill="#555" font-size="9" font-family="monospace">MONOCROMADOR</text>
+      <text x="266" y="158" text-anchor="middle" fill="#333" font-size="8" font-family="monospace">grade de difração</text>
+
+      <!-- ─── 4. EXIT SLIT ─── -->
+      <rect x="308" y="66" width="10" height="54" fill="#222" stroke="#444" stroke-width="1"/>
+      <rect x="308" y="66" width="10" height="19" fill="#0a0a0a"/>
+      <rect x="308" y="101" width="10" height="19" fill="#0a0a0a"/>
+      <line x1="313" y1="85" x2="313" y2="101" stroke="#33ff6650" stroke-width="2"/>
+      <text x="313" y="148" text-anchor="middle" fill="#555" font-size="9" font-family="monospace">FENDA</text>
+      <text x="313" y="158" text-anchor="middle" fill="#333" font-size="8" font-family="monospace">saída</text>
+
+      <!-- ─── 5. CUVETTE ─── -->
+      <rect x="380" y="63" width="50" height="60" fill="#081508" stroke="#0f2e0f" stroke-width="1" rx="1"/>
+      <rect x="385" y="68" width="40" height="50" fill="#0a2010" rx="1"/>
+      <!-- liquid -->
+      <rect x="385" y="76" width="40" height="42" fill="#1a5a2a" opacity="0.85"/>
+      <!-- beam through cuvette -->
+      <line x1="380" y1="93" x2="430" y2="93" stroke="#33ff6640" stroke-width="2"/>
+      <!-- cuvette cap -->
+      <rect x="390" y="63" width="20" height="5" fill="#222" rx="1"/>
+      <text x="405" y="148" text-anchor="middle" fill="#555" font-size="9" font-family="monospace">CUBETA</text>
+      <text x="405" y="158" text-anchor="middle" fill="#333" font-size="8" font-family="monospace">porta-amostra</text>
+
+      <!-- ─── 6. PHOTODETECTOR ─── -->
+      <circle cx="524" cy="93" r="24" fill="#101020" stroke="#334" stroke-width="1.5"/>
+      <!-- Photodiode symbol -->
+      <polygon points="513,83 513,103 531,93" fill="#33ff66" opacity="0.4"/>
+      <line x1="531" y1="82" x2="531" y2="104" stroke="#33ff66" stroke-width="2" opacity="0.6"/>
+      <line x1="513" y1="86" x2="508" y2="82" stroke="#444" stroke-width="1"/>
+      <line x1="513" y1="100" x2="508" y2="104" stroke="#444" stroke-width="1"/>
+      <text x="524" y="148" text-anchor="middle" fill="#555" font-size="9" font-family="monospace">FOTODETECTOR</text>
+      <text x="524" y="158" text-anchor="middle" fill="#333" font-size="8" font-family="monospace">fotodiodo</text>
+
+      <!-- ─── 7. DISPLAY ─── -->
+      <rect x="606" y="58" width="96" height="70" fill="#081508" stroke="#0f2e0f" stroke-width="1.5" rx="3"/>
+      <rect x="612" y="64" width="84" height="58" fill="none" stroke="#0f2e0f" stroke-width="1"/>
+      <text x="654" y="82" text-anchor="middle" fill="#33ff66" font-size="10"
+            font-family="'JetBrains Mono', monospace">Abs  0.312</text>
+      <text x="654" y="97" text-anchor="middle" fill="#33ff66" font-size="10"
+            font-family="'JetBrains Mono', monospace">%T   48.7</text>
+      <text x="654" y="112" text-anchor="middle" fill="#1c6634" font-size="10"
+            font-family="'JetBrains Mono', monospace">100.0 mg/dL</text>
+      <text x="654" y="148" text-anchor="middle" fill="#555" font-size="9" font-family="monospace">DISPLAY</text>
+      <text x="654" y="158" text-anchor="middle" fill="#333" font-size="8" font-family="monospace">leitura digital</text>
+
+      <!-- ─── Instrument body outline ─── -->
+      <rect x="26" y="48" width="750" height="86" fill="none" stroke="#1a1a1a" stroke-width="1"
+            stroke-dasharray="6,4" rx="4"/>
+      <text x="776" y="95" fill="#1e1e1e" font-size="9" font-family="monospace">╗</text>
+    </svg>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ TABS ═══ -->
 <div class="tabs">
   <button class="tab active" onclick="setMode('glucose', this)">Glicose</button>
-  <button class="tab" onclick="setMode('generic', this)">Genérico</button>
+  <button class="tab"        onclick="setMode('generic', this)">Genérico</button>
 </div>
 
-<!-- Main grid: controls + display -->
-<div class="main-grid">
+<!-- ═══════════════════════════════════════════ PAGE BODY ═══ -->
+<div class="page-body">
 
-  <!-- Left: controls -->
-  <div class="panel">
-    <div class="panel-title">Configuração</div>
+  <!-- ── Main grid: controls + display ── -->
+  <div class="main-grid">
 
-    <!-- Generic mode fields (hidden in glucose mode) -->
-    <div id="genericFields" style="display:none">
-      <div class="field-group">
-        <div class="field-wrap">
-          <label>Analito</label>
-          <input type="text" id="analyteNameInput" value="Proteína Total" maxlength="20">
+    <!-- Config panel -->
+    <div class="panel">
+      <div class="panel-title">Configuração</div>
+
+      <!-- Generic fields (hidden in glucose mode) -->
+      <div id="genericFields" class="generic-fields hidden">
+        <div class="field-grid">
+          <div class="field-wrap">
+            <label for="genericAnalyte">Analito</label>
+            <input type="text" id="genericAnalyte" value="Proteína Total" maxlength="24">
+          </div>
+          <div class="field-wrap">
+            <label for="genericUnit">Unidade</label>
+            <input type="text" id="genericUnit" value="g/dL" maxlength="10">
+          </div>
+          <div class="field-wrap">
+            <label for="genericStd">Conc. Padrão</label>
+            <input type="number" id="genericStd" value="8.0" min="0.01" step="0.1">
+          </div>
         </div>
-        <div class="field-wrap">
-          <label>Unidade</label>
-          <input type="text" id="unitInput" value="g/dL" maxlength="10">
+      </div>
+
+      <!-- Lambda selector -->
+      <div class="panel-title">Comprimento de Onda (λ)</div>
+      <div class="lambda-grid" id="lambdaGrid"></div>
+
+      <!-- Action buttons -->
+      <div class="action-btns">
+        <button class="btn"         onclick="doBlanco()">Branco</button>
+        <button class="btn"         onclick="doLerPadrao()"  id="btnLerPadrao"  disabled>Ler Padrão</button>
+        <button class="btn primary" onclick="doLerAmostra()" id="btnLerAmostra" disabled>Ler Amostra</button>
+      </div>
+
+      <div class="status-msg" id="statusMsg">Calibre o aparelho com BRANCO antes de iniciar.</div>
+    </div>
+
+    <!-- Display panel -->
+    <div class="panel">
+      <div class="panel-title">Display</div>
+
+      <div class="lcd-display">
+        <div class="lcd-header">
+          <div class="led-wrap">
+            <div class="led" id="led"></div>
+            <span class="led-label" id="ledLabel">Não calibrado</span>
+          </div>
+          <span class="lambda-display" id="lambdaDisplay">λ: — nm</span>
         </div>
-        <div class="field-wrap">
-          <label>Conc. Padrão</label>
-          <input type="number" id="stdConcInput" value="8.0" min="0.1" step="0.1">
+
+        <div class="lcd-row">
+          <span class="lcd-label">Abs</span>
+          <span class="lcd-value" id="dispAbs">—</span>
+          <span class="lcd-unit"></span>
+        </div>
+        <div class="lcd-row">
+          <span class="lcd-label">%T</span>
+          <span class="lcd-value" id="dispT">—</span>
+          <span class="lcd-unit">%</span>
+        </div>
+        <div class="lcd-row">
+          <span class="lcd-label">Conc.</span>
+          <span class="lcd-value" id="dispConc">—</span>
+          <span class="lcd-unit" id="dispUnit">—</span>
+        </div>
+        <div class="lcd-row">
+          <span class="lcd-label">Fator</span>
+          <span class="lcd-value sm" id="dispFator">—</span>
+          <span class="lcd-unit" id="dispFatorUnit"></span>
         </div>
       </div>
-    </div>
 
-    <!-- Lambda selector -->
-    <div class="panel-title" style="margin-top:4px">Comprimento de Onda (λ)</div>
-    <div class="lambda-grid" id="lambdaGrid">
-      <!-- populated by JS -->
-    </div>
+      <div class="fator-callout" id="fatorCallout"></div>
 
-    <!-- Action buttons -->
-    <div class="action-btns">
-      <button class="btn" onclick="doBlanco()">Branco</button>
-      <button class="btn" id="btnLerPadrao" onclick="doLerPadrao()" disabled>Ler Padrão</button>
-      <button class="btn primary" id="btnLerAmostra" onclick="doLerAmostra()" disabled>Ler Amostra</button>
+      <div style="font-size:0.74rem;color:var(--text-faint);line-height:1.7;margin-top:8px">
+        <div>Padrões: Branco · P1 (25) · P2 (50) · P3 (100) · P4 (150) · P5 (200)</div>
+        <div>Ref. Glicemia: &lt;70 Hipo · 70–99 Normal · 100–125 Pré-DM · ≥126 DM</div>
+      </div>
     </div>
-    <div class="status-msg" id="statusMsg">Calibre o aparelho com BRANCO antes de iniciar.</div>
   </div>
 
-  <!-- Right: display -->
-  <div class="panel">
-    <div class="panel-title">Display</div>
-
-    <div class="display">
-      <div class="display-top">
-        <div class="led-wrap">
-          <div class="led" id="led"></div>
-          <span class="led-label" id="ledLabel">Não calibrado</span>
-        </div>
-        <span class="wavelength-display" id="lambdaDisplay">λ: — nm</span>
-      </div>
-
-      <div class="display-row">
-        <span class="display-label">Abs</span>
-        <span class="display-value" id="dispAbs">—</span>
-        <span class="display-unit"></span>
-      </div>
-      <div class="display-row">
-        <span class="display-label">%T</span>
-        <span class="display-value" id="dispT">—</span>
-        <span class="display-unit">%</span>
-      </div>
-      <div class="display-row">
-        <span class="display-label">Conc.</span>
-        <span class="display-value" id="dispConc">—</span>
-        <span class="display-unit" id="dispUnit">—</span>
-      </div>
-      <div class="display-row">
-        <span class="display-label">Fator</span>
-        <span class="display-value small" id="dispFator">—</span>
-        <span class="display-unit" id="dispFatorUnit"></span>
+  <!-- ── Triplicate standard section ── -->
+  <div class="tripl-section hidden" id="triplicateSection">
+    <div class="section-header">
+      <div class="panel-title" style="margin-bottom:0">
+        Triplicata do Padrão — Inclua ou rejeite leituras individuais
       </div>
     </div>
 
-    <div class="fator-display" id="fatorInfo"></div>
+    <div class="tripl-body">
+      <div id="triplicateReadings"></div>
+      <div class="tripl-calc-box" id="triplicateCalc"></div>
+    </div>
 
-    <!-- Calibration curve info -->
-    <div style="font-size:11px; color:var(--muted); line-height:1.6">
-      <div>Padrões de calibração:</div>
-      <div>Branco·0 &nbsp; P1·25 &nbsp; P2·50 &nbsp; P3·100 &nbsp; P4·150 &nbsp; P5·200</div>
+    <div class="tripl-actions">
+      <button class="btn primary" id="btnAceitarTripl" onclick="aceitarTriplicata()" disabled>
+        Aceitar Triplicata
+      </button>
+      <button class="btn" onclick="refazerTriplicata()">Refazer Leitura</button>
+    </div>
+
+    <div class="tripl-status" id="triplicateStatus"></div>
+  </div>
+
+  <!-- ── Results table ── -->
+  <div class="table-section">
+    <div class="section-header">
+      <div class="panel-title" style="margin-bottom:0">Tabela de Resultados</div>
+      <div class="btn-group">
+        <button class="btn-small" onclick="clearTable()">Limpar</button>
+        <button class="btn-small" onclick="copyTable()">Copiar</button>
+        <button class="btn-small" onclick="printReport()">⎙ Relatório</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Amostra</th>
+            <th>λ (nm)</th>
+            <th>Abs</th>
+            <th>%T</th>
+            <th>Fator</th>
+            <th>Concentração</th>
+            <th>Unidade</th>
+            <th>Classificação</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody">
+          <tr><td colspan="9" class="table-empty">Nenhuma leitura registrada.</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
-</div>
 
-<!-- Results table -->
-<div class="table-section">
-  <div class="section-header">
-    <div class="panel-title" style="margin-bottom:0">Tabela de Resultados</div>
-    <div style="display:flex;gap:6px">
-      <button class="btn-small" onclick="clearTable()">Limpar</button>
-      <button class="btn-small" onclick="copyTable()">Copiar</button>
+  <!-- ── Calibration curves ── -->
+  <div class="curves-section">
+    <div class="section-header">
+      <div class="panel-title" style="margin-bottom:0">Curvas de Calibração</div>
+      <div class="btn-group">
+        <button class="btn-small" onclick="generateCurves()">Gerar Curvas</button>
+        <button class="btn-small" onclick="generateCurves()">Tentar Novamente</button>
+      </div>
     </div>
-  </div>
-  <div class="table-wrap">
-    <table id="resultsTable">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Amostra</th>
-          <th>λ (nm)</th>
-          <th>Abs</th>
-          <th>%T</th>
-          <th>Fator</th>
-          <th>Concentração</th>
-          <th>Unidade</th>
-        </tr>
-      </thead>
-      <tbody id="resultsBody">
-        <tr><td colspan="8" class="table-empty">Nenhuma leitura registrada.</td></tr>
-      </tbody>
-    </table>
-  </div>
-</div>
 
-<!-- Calibration curves -->
-<div class="curves-section">
-  <div class="section-header">
-    <div class="panel-title" style="margin-bottom:0">Curvas de Calibração</div>
-    <div style="display:flex;gap:6px">
-      <button class="btn-small" onclick="generateCurves()">Gerar Curva</button>
-      <button class="btn-small" onclick="generateCurves()">Tentar Novamente</button>
-    </div>
-  </div>
-  <div style="font-size:11px;color:var(--muted);margin-bottom:10px">
-    Identifique qual das quatro curvas abaixo apresenta problema (outlier, platô ou dispersão alta).
-  </div>
-  <div class="curves-grid" id="curvesGrid">
-    <div style="color:var(--text-dim);font-size:12px;grid-column:1/-1;text-align:center;padding:16px">
-      Clique em "Gerar Curva" para visualizar as curvas de calibração.
-    </div>
-  </div>
-</div>
-
-<!-- Help modal -->
-<div class="modal-overlay" id="helpModal">
-  <div class="modal">
-    <h2>Como usar</h2>
-    <ol>
-      <li>Escolha o ensaio: <strong>Glicose</strong> (λ fixo 505 nm) ou <strong>Genérico</strong> (configure analito e padrão).</li>
-      <li>Selecione o comprimento de onda (λ).</li>
-      <li>Clique em <strong>BRANCO</strong> — zera o aparelho (LED verde).</li>
-      <li>Clique em <strong>LER PADRÃO</strong> — mede o padrão e calcula o Fator.</li>
-      <li>Clique em <strong>LER AMOSTRA</strong> — gera uma leitura aleatória e registra na tabela.</li>
-      <li>Use <strong>Copiar</strong> para colar a tabela no seu relatório.</li>
-      <li>Em <strong>Curvas de Calibração</strong>, gere 4 curvas e identifique a curva ruim.</li>
-    </ol>
-    <p style="margin-top:12px;color:var(--muted)">
-      Fórmulas: Abs = −log(%T/100) · %T = 100×10⁻ᴬᵇˢ · F = C_padrão/Abs_padrão · C = Abs×F
+    <p class="hint-text">
+      Três curvas são boas (R² &gt; 0.99) e uma apresenta problema (outlier, platô ou dispersão alta).
+      Identifique-a e clique em uma curva para selecioná-la para o relatório.
     </p>
+
+    <div class="curves-body">
+      <div class="curves-grid" id="curvesGrid">
+        <div class="curves-empty">Clique em "Gerar Curvas" para iniciar.</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end .page-body -->
+
+<!-- ═══════════════════════════════════════════ HELP MODAL ═══ -->
+<div class="modal-overlay hidden" id="helpModal" onclick="handleModalClick(event)">
+  <div class="modal">
+    <h2>Como Usar</h2>
+    <ol>
+      <li>Escolha o ensaio: <strong>Glicose</strong> (λ = 505 nm automático) ou <strong>Genérico</strong> (configure analito, unidade e padrão).</li>
+      <li>Selecione o comprimento de onda λ desejado.</li>
+      <li>Clique em <strong>BRANCO</strong> — zera o aparelho (LED verde).</li>
+      <li>Clique em <strong>LER PADRÃO</strong> — o sistema gera três leituras (P1, P2, P3). Aleatoriamente uma pode ter desvio de ~20%. Verifique o CV% e rejeite leituras discrepantes.</li>
+      <li>Clique em <strong>ACEITAR TRIPLICATA</strong> quando CV ≤ 5% — o fator de calibração é calculado.</li>
+      <li>Clique em <strong>LER AMOSTRA</strong> repetidamente — cada leitura é registrada na tabela.</li>
+      <li>Em <strong>Curvas de Calibração</strong>, identifique a curva problemática e clique para selecioná-la para o relatório.</li>
+      <li>Clique em <strong>⎙ Relatório</strong> para imprimir o registro completo da corrida.</li>
+    </ol>
+    <div class="formulas">
+      <div class="formula">Abs = −log(%T / 100)</div>
+      <div class="formula">%T  = 100 × 10⁻ᴬᵇˢ</div>
+      <div class="formula">Fator = C_padrão / Abs_média_triplicata</div>
+      <div class="formula">Concentração = Abs_amostra × Fator</div>
+      <div class="formula">CV% = (DP / Média) × 100 — aceitável ≤ 5%</div>
+    </div>
     <button class="btn modal-close" onclick="closeHelp()">Fechar</button>
   </div>
 </div>
 
-<script>
-'use strict';
-
-// ─── State ────────────────────────────────────────────────────────────────────
-const state = {
-  mode: 'glucose',        // 'glucose' | 'generic'
-  lambda: 505,
-  calibrated: false,
-  padraoRead: false,
-  fator: null,
-  results: [],
-  sampleCount: 0,
-  // generic settings
-  analyteName: 'Proteína Total',
-  stdConc: 8.0,
-  unit: 'g/dL',
-};
-
-const WAVELENGTHS = [340, 405, 505, 540, 546, 570, 620, 670];
-const STD_POINTS  = [0, 25, 50, 100, 150, 200]; // concentrações dos padrões (mg/dL base)
-
-// ─── Init ─────────────────────────────────────────────────────────────────────
-(function init() {
-  buildLambdaGrid();
-  setLambda(505);
-  updateLed('red');
-})();
-
-function buildLambdaGrid() {
-  const grid = document.getElementById('lambdaGrid');
-  grid.innerHTML = '';
-  WAVELENGTHS.forEach(nm => {
-    const btn = document.createElement('button');
-    btn.className = 'lambda-btn' + (nm === state.lambda ? ' active' : '');
-    btn.textContent = nm;
-    btn.onclick = () => {
-      if (state.mode === 'glucose') return; // λ fixed in glucose mode
-      setLambda(nm);
-      resetCalibration();
-    };
-    grid.appendChild(btn);
-  });
-}
-
-// ─── Mode ─────────────────────────────────────────────────────────────────────
-function setMode(mode, tabEl) {
-  state.mode = mode;
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  tabEl.classList.add('active');
-
-  const gf = document.getElementById('genericFields');
-
-  if (mode === 'glucose') {
-    gf.style.display = 'none';
-    setLambda(505);
-    // disable lambda buttons
-    document.querySelectorAll('.lambda-btn').forEach(b => {
-      b.style.opacity = '0.4';
-      b.style.cursor = 'not-allowed';
-    });
-  } else {
-    gf.style.display = 'block';
-    document.querySelectorAll('.lambda-btn').forEach(b => {
-      b.style.opacity = '';
-      b.style.cursor = '';
-    });
-    // read generic fields
-    syncGenericFields();
-  }
-
-  resetCalibration();
-}
-
-function syncGenericFields() {
-  state.analyteName = document.getElementById('analyteNameInput').value || 'Analito';
-  state.stdConc     = parseFloat(document.getElementById('stdConcInput').value) || 100;
-  state.unit        = document.getElementById('unitInput').value || 'u';
-}
-
-// Live sync generic fields
-['analyteNameInput','unitInput','stdConcInput'].forEach(id => {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener('input', () => {
-    syncGenericFields();
-    resetCalibration();
-  });
-});
-
-// ─── Lambda ───────────────────────────────────────────────────────────────────
-function setLambda(nm) {
-  state.lambda = nm;
-  document.getElementById('lambdaDisplay').textContent = `λ: ${nm} nm`;
-  document.querySelectorAll('.lambda-btn').forEach(b => {
-    b.classList.toggle('active', parseInt(b.textContent) === nm);
-  });
-}
-
-// ─── Calibration ──────────────────────────────────────────────────────────────
-function resetCalibration() {
-  state.calibrated = false;
-  state.padraoRead = false;
-  state.fator = null;
-  updateLed('red');
-  setDisplay('—', '—', '—', '—');
-  document.getElementById('btnLerPadrao').disabled  = true;
-  document.getElementById('btnLerAmostra').disabled = true;
-  document.getElementById('fatorInfo').classList.remove('visible');
-  setStatus('Calibre o aparelho com BRANCO antes de iniciar.', '');
-}
-
-function doBlanco() {
-  updateLed('yellow', 'Zerando…');
-  setTimeout(() => {
-    state.calibrated = true;
-    state.padraoRead = false;
-    state.fator = null;
-    updateLed('green', 'Pronto');
-    setDisplayRaw(0.000, 100.0, null, null);
-    document.getElementById('btnLerPadrao').disabled  = false;
-    document.getElementById('btnLerAmostra').disabled = true;
-    document.getElementById('fatorInfo').classList.remove('visible');
-    setStatus('Aparelho zerado. Leia o padrão para calcular o fator.', 'ok');
-  }, 600);
-}
-
-function doLerPadrao() {
-  if (!state.calibrated) { setStatus('Calibre primeiro com BRANCO.', 'err'); return; }
-
-  if (state.mode === 'generic') syncGenericFields();
-
-  updateLed('yellow', 'Lendo…');
-  setTimeout(() => {
-    const stdConc = state.mode === 'glucose' ? 100 : state.stdConc;
-    const unit    = state.mode === 'glucose' ? 'mg/dL' : state.unit;
-    const epsilon = getEpsilon();
-
-    // Simulated abs for the standard with tiny noise
-    const absStd = stdConc * epsilon + (Math.random() - 0.5) * 0.002;
-    const absStdClamped = Math.max(0.001, absStd);
-    const pctT   = 100 * Math.pow(10, -absStdClamped);
-    const fator  = stdConc / absStdClamped;
-
-    state.fator     = fator;
-    state.padraoRead = true;
-
-    updateLed('green', 'Pronto');
-    setDisplayRaw(absStdClamped, pctT, stdConc, unit, fator);
-
-    const fi = document.getElementById('fatorInfo');
-    fi.textContent = `Fator = ${stdConc.toFixed(1)} / ${absStdClamped.toFixed(4)} = ${fator.toFixed(2)} ${unit}/Abs`;
-    fi.classList.add('visible');
-
-    document.getElementById('btnLerAmostra').disabled = false;
-    setStatus(`Fator calculado: ${fator.toFixed(2)}. Leia as amostras.`, 'ok');
-  }, 500);
-}
-
-function doLerAmostra() {
-  if (!state.calibrated) { setStatus('Calibre primeiro com BRANCO.', 'err'); return; }
-  if (!state.fator)      { setStatus('Leia o padrão antes da amostra.', 'err'); return; }
-
-  if (state.mode === 'generic') syncGenericFields();
-
-  updateLed('yellow', 'Lendo…');
-  setTimeout(() => {
-    const unit     = state.mode === 'glucose' ? 'mg/dL' : state.unit;
-    const epsilon  = getEpsilon();
-
-    // Random concentration in valid range
-    let conc;
-    if (state.mode === 'glucose') {
-      conc = 51 + Math.random() * 499; // 51–550
-    } else {
-      const stdConc = state.stdConc;
-      conc = stdConc * (0.3 + Math.random() * 1.7); // 30–200% of standard
-    }
-
-    const absTrue = conc * epsilon;
-    const noise   = (Math.random() - 0.5) * 0.005;
-    const abs     = Math.max(0.001, absTrue + noise);
-    const pctT    = 100 * Math.pow(10, -abs);
-    const concCalc = abs * state.fator;
-
-    state.sampleCount++;
-    const row = {
-      n:       state.sampleCount,
-      name:    `Amostra ${state.sampleCount}`,
-      lambda:  state.lambda,
-      abs:     abs,
-      pctT:    pctT,
-      fator:   state.fator,
-      conc:    concCalc,
-      unit:    unit,
-    };
-    state.results.push(row);
-
-    updateLed('green', 'Pronto');
-    setDisplayRaw(abs, pctT, concCalc, unit, state.fator);
-    renderTable();
-    setStatus(`Amostra ${state.sampleCount} registrada.`, 'ok');
-  }, 450);
-}
-
-// ─── Epsilon (simulated molar absorptivity) ───────────────────────────────────
-function getEpsilon() {
-  // Returns a plausible ε for the selected λ / mode
-  const epsilonMap = {
-    340: 0.00320, 405: 0.00280, 505: 0.00312,
-    540: 0.00290, 546: 0.00305, 570: 0.00270,
-    620: 0.00185, 670: 0.00160,
-  };
-  return epsilonMap[state.lambda] || 0.00300;
-}
-
-// ─── Display ──────────────────────────────────────────────────────────────────
-function setDisplay(abs, pctT, conc, fator) {
-  document.getElementById('dispAbs').textContent  = abs;
-  document.getElementById('dispT').textContent    = pctT;
-  document.getElementById('dispConc').textContent = conc;
-  document.getElementById('dispFator').textContent = fator;
-  document.getElementById('dispUnit').textContent  = '—';
-  document.getElementById('dispFatorUnit').textContent = '';
-}
-
-function setDisplayRaw(abs, pctT, conc, unit, fator) {
-  document.getElementById('dispAbs').textContent  = abs !== null ? abs.toFixed(4) : '—';
-  document.getElementById('dispT').textContent    = pctT !== null ? pctT.toFixed(1) : '—';
-  document.getElementById('dispConc').textContent = conc !== null ? conc.toFixed(2) : '—';
-  document.getElementById('dispUnit').textContent  = unit || '—';
-  document.getElementById('dispFator').textContent = fator != null ? fator.toFixed(2) : '—';
-  document.getElementById('dispFatorUnit').textContent = unit ? unit + '/Abs' : '';
-}
-
-function setStatus(msg, type) {
-  const el = document.getElementById('statusMsg');
-  el.textContent = msg;
-  el.className = 'status-msg' + (type ? ' ' + type : '');
-}
-
-function updateLed(color, label) {
-  const led = document.getElementById('led');
-  const lbl = document.getElementById('ledLabel');
-  led.className = 'led ' + color;
-  if (label) lbl.textContent = label;
-  else {
-    lbl.textContent = color === 'green' ? 'Pronto' : color === 'yellow' ? 'Lendo…' : 'Não calibrado';
-  }
-}
-
-// ─── Results table ────────────────────────────────────────────────────────────
-function renderTable() {
-  const tbody = document.getElementById('resultsBody');
-  if (state.results.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" class="table-empty">Nenhuma leitura registrada.</td></tr>';
-    return;
-  }
-  tbody.innerHTML = state.results.map(r => `
-    <tr>
-      <td class="num">${r.n}</td>
-      <td class="label-cell">${r.name}</td>
-      <td class="num">${r.lambda}</td>
-      <td class="num">${r.abs.toFixed(4)}</td>
-      <td class="num">${r.pctT.toFixed(1)}</td>
-      <td class="num">${r.fator.toFixed(2)}</td>
-      <td class="num">${r.conc.toFixed(2)}</td>
-      <td class="label-cell">${r.unit}</td>
-    </tr>
-  `).join('');
-}
-
-function clearTable() {
-  state.results = [];
-  state.sampleCount = 0;
-  renderTable();
-}
-
-function copyTable() {
-  if (state.results.length === 0) { setStatus('Tabela vazia.', 'warn'); return; }
-  const header = ['#','Amostra','λ (nm)','Abs','%T','Fator','Concentração','Unidade'].join('\t');
-  const rows = state.results.map(r =>
-    [r.n, r.name, r.lambda, r.abs.toFixed(4), r.pctT.toFixed(1),
-     r.fator.toFixed(2), r.conc.toFixed(2), r.unit].join('\t')
-  );
-  const text = [header, ...rows].join('\n');
-  navigator.clipboard.writeText(text).then(() => {
-    setStatus('Tabela copiada para a área de transferência.', 'ok');
-  }).catch(() => {
-    // fallback
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    setStatus('Tabela copiada.', 'ok');
-  });
-}
-
-// ─── Calibration curves ───────────────────────────────────────────────────────
-function generateCurves() {
-  const grid = document.getElementById('curvesGrid');
-  grid.innerHTML = '';
-
-  const labels = ['A', 'B', 'C', 'D'];
-  // Pick which index will be the bad curve
-  const badIdx = Math.floor(Math.random() * 4);
-  const badType = ['outlier', 'plateau', 'dispersion'][Math.floor(Math.random() * 3)];
-
-  // Generate 3 different good epsilon values
-  const epsilons = generateDistinctEpsilons(3);
-  let epsilonPool = [...epsilons];
-  let goodUsed = 0;
-
-  labels.forEach((label, i) => {
-    let points;
-    if (i === badIdx) {
-      points = generateBadCurve(badType);
-    } else {
-      points = generateGoodCurve(epsilonPool[goodUsed++]);
-    }
-
-    const card = buildCurveCard(label, points, i === badIdx, badType);
-    grid.appendChild(card);
-  });
-}
-
-function generateDistinctEpsilons(n) {
-  // Generate n epsilon values that produce visually distinct curves
-  const base = [0.0028, 0.0035, 0.0042];
-  // shuffle
-  return base.sort(() => Math.random() - 0.5).slice(0, n);
-}
-
-function generateGoodCurve(epsilon) {
-  return STD_POINTS.map(c => {
-    const absTrue = c * epsilon;
-    const noise   = c === 0 ? 0 : (Math.random() - 0.5) * absTrue * 0.015; // 1.5% noise max
-    return { conc: c, abs: Math.max(0, absTrue + noise) };
-  });
-}
-
-function generateBadCurve(type) {
-  const epsilon = 0.0033;
-
-  if (type === 'outlier') {
-    const pts = generateGoodCurve(epsilon);
-    // corrupt one intermediate point (index 2, 3 or 4)
-    const idx = 2 + Math.floor(Math.random() * 3);
-    const direction = Math.random() > 0.5 ? 1 : -1;
-    pts[idx].abs = Math.max(0, pts[idx].abs + direction * pts[idx].abs * (0.35 + Math.random() * 0.25));
-    return pts;
-
-  } else if (type === 'plateau') {
-    return STD_POINTS.map(c => {
-      const plateau = 150; // plateau kicks in after 150
-      const effC    = c < plateau ? c : plateau + (c - plateau) * 0.10;
-      const absTrue = effC * epsilon;
-      const noise   = (Math.random() - 0.5) * 0.002;
-      return { conc: c, abs: Math.max(0, absTrue + noise) };
-    });
-
-  } else { // dispersion
-    return STD_POINTS.map(c => {
-      const absTrue = c * epsilon;
-      const noise   = (Math.random() - 0.5) * absTrue * (c === 0 ? 0.05 : 0.30);
-      return { conc: c, abs: Math.max(0, absTrue + noise) };
-    });
-  }
-}
-
-function buildCurveCard(label, points, isBad, badType) {
-  const card = document.createElement('div');
-  card.className = 'curve-card';
-
-  // Title
-  const title = document.createElement('div');
-  title.className = 'curve-card-title';
-  title.textContent = `Curva ${label}`;
-  card.appendChild(title);
-
-  // Table
-  const table = document.createElement('table');
-  table.className = 'curve-table';
-  table.innerHTML = `
-    <thead><tr><th>Padrão</th><th>Conc.</th><th>Abs</th></tr></thead>
-    <tbody>
-      ${points.map((p, i) => `
-        <tr>
-          <td>${i === 0 ? 'Branco' : 'P' + i}</td>
-          <td class="num">${p.conc}</td>
-          <td class="num">${p.abs.toFixed(4)}</td>
-        </tr>
-      `).join('')}
-    </tbody>
-  `;
-  card.appendChild(table);
-
-  // Canvas scatter plot
-  const canvas = document.createElement('canvas');
-  canvas.className = 'scatter';
-  canvas.width  = 140;
-  canvas.height = 100;
-  card.appendChild(canvas);
-
-  // Draw after append (requestAnimationFrame to ensure layout)
-  requestAnimationFrame(() => drawScatter(canvas, points));
-
-  return card;
-}
-
-function drawScatter(canvas, points) {
-  const ctx  = canvas.getContext('2d');
-  const W    = canvas.width;
-  const H    = canvas.height;
-  const pad  = { top: 8, right: 10, bottom: 20, left: 28 };
-
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#0a1a0a';
-  ctx.fillRect(0, 0, W, H);
-
-  const maxConc = 200;
-  const maxAbs  = Math.max(...points.map(p => p.abs), 0.1) * 1.15;
-
-  function toX(c) { return pad.left + (c / maxConc) * (W - pad.left - pad.right); }
-  function toY(a) { return H - pad.bottom - (a / maxAbs) * (H - pad.top - pad.bottom); }
-
-  // Axes
-  ctx.strokeStyle = '#1a3a1a';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(pad.left, pad.top);
-  ctx.lineTo(pad.left, H - pad.bottom);
-  ctx.lineTo(W - pad.right, H - pad.bottom);
-  ctx.stroke();
-
-  // Axis labels
-  ctx.fillStyle = '#1a7a33';
-  ctx.font = '8px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText('Conc.', pad.left + (W - pad.left - pad.right) / 2, H);
-  ctx.save();
-  ctx.translate(9, pad.top + (H - pad.top - pad.bottom) / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.fillText('Abs', 0, 0);
-  ctx.restore();
-
-  // Trend line (least squares)
-  const n   = points.length;
-  let sumX  = 0, sumY = 0, sumXY = 0, sumXX = 0;
-  points.forEach(p => { sumX += p.conc; sumY += p.abs; sumXY += p.conc * p.abs; sumXX += p.conc * p.conc; });
-  const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-  const inter = (sumY - slope * sumX) / n;
-
-  ctx.strokeStyle = '#1a5a1a';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([2, 2]);
-  ctx.beginPath();
-  ctx.moveTo(toX(0), toY(inter));
-  ctx.lineTo(toX(maxConc), toY(slope * maxConc + inter));
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  // Points
-  points.forEach(p => {
-    const x = toX(p.conc);
-    const y = toY(p.abs);
-    ctx.fillStyle = '#33ff66';
-    ctx.beginPath();
-    ctx.arc(x, y, 3, 0, Math.PI * 2);
-    ctx.fill();
-  });
-}
-
-// ─── Help modal ───────────────────────────────────────────────────────────────
-function openHelp()  { document.getElementById('helpModal').classList.add('open'); }
-function closeHelp() { document.getElementById('helpModal').classList.remove('open'); }
-document.getElementById('helpModal').addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeHelp();
-});
-</script>
-
+<script src="app.js"></script>
 </body>
 </html>
