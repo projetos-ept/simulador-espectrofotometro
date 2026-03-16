@@ -918,9 +918,9 @@ function printReport(isActivity = false) {
   const stdConc  = getStdConc();
   const lambda   = state.lambda;
 
-  // Helper: in activity mode, replace a value with a fill-in blank
+  // Helper: in activity mode, hide the value with white text (invisible on paper)
   const blank = (val) => isActivity
-    ? '<span class="act-blank">&nbsp;</span>'
+    ? `<span style="color:white">${val}</span>`
     : val;
 
   // Triplicate data
@@ -988,7 +988,7 @@ function printReport(isActivity = false) {
       Média = ${expr} = ${blank(mean.toFixed(4) + ' Abs')}<br>
       ${included.length > 1 ? `DP = ${sd.toFixed(5)} &nbsp;&nbsp; CV = <strong>${cv.toFixed(2)}%</strong> — ${cvStatus}<br>` : ''}
       Critério de aceitação: CV ≤ ${CV_THRESHOLD}%<br>
-      Fator = ${stdConc} / ${mean.toFixed(4)} = <strong>${blank((fator ? fator.toFixed(2) : '—') + ' ' + unit + '/Abs')}</strong>
+      Fator = ${stdConc} / ${blank(mean.toFixed(4))} = <strong>${blank((fator ? fator.toFixed(2) : '—') + ' ' + unit + '/Abs')}</strong>
     `;
   }
 
@@ -1108,7 +1108,7 @@ function printReport(isActivity = false) {
     <div class="meta-row"><span class="meta-key">Analito:</span><span>${state.mode === 'glucose' ? 'Glicose' : state.analyteName}</span></div>
     <div class="meta-row"><span class="meta-key">λ (nm):</span><span>${lambda} nm</span></div>
     <div class="meta-row"><span class="meta-key">Padrão:</span><span>${stdConc} ${unit}</span></div>
-    <div class="meta-row"><span class="meta-key">Fator calc.:</span><span>${fator ? fator.toFixed(2) + ' ' + unit + '/Abs' : 'Não calculado'}</span></div>
+    <div class="meta-row"><span class="meta-key">Fator calc.:</span><span>${blank(fator ? fator.toFixed(2) + ' ' + unit + '/Abs' : 'Não calculado')}</span></div>
     <div class="meta-row"><span class="meta-key">Tentativas:</span><span>${state.triplicateAttempt} (${failed.length} reprovada${failed.length !== 1 ? 's' : ''})</span></div>
   <div class="meta-row"><span class="meta-key">Amostras:</span><span>${state.results.length}</span></div>
   </div>
