@@ -191,15 +191,18 @@ function doLerPadrao() {
 
     const baseAbs = getStdConc() * getEpsilon();
 
+    // Ler o checkbox diretamente do DOM (mais confiável que state.forcarErro)
+    const forcarErro = document.getElementById('chkForcarErro')?.checked ?? false;
+
     // Forçar erro manual (checkbox) OR 20% aleatório na 1ª tentativa
-    const wantHighCV = state.forcarErro || (state.triplicateAttempt === 1 && Math.random() < 0.20);
+    const wantHighCV = forcarErro || (state.triplicateAttempt === 1 && Math.random() < 0.20);
 
     let readings;
     let iters = 0;
 
     if (wantHighCV) {
       // forcarErro → CV 5–10%; aleatório → CV 1–6%
-      const sigma = state.forcarErro
+      const sigma = forcarErro
         ? 0.05 + Math.random() * 0.05          // CV ~5–10%
         : 0.013 + Math.random() * 0.045;       // CV ~1–6%
       do {
@@ -906,7 +909,7 @@ function curveToReportSVG(curve, unitLabel) {
 /* ═══════════════════════════════════════════════════════════════════
    PRINT REPORT
    ═══════════════════════════════════════════════════════════════════ */
-function printReport() {
+function printReport(isActivity = false) {
   const now      = new Date();
   const dateStr  = now.toLocaleDateString('pt-BR');
   const timeStr  = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -914,6 +917,11 @@ function printReport() {
   const unit     = getUnit();
   const stdConc  = getStdConc();
   const lambda   = state.lambda;
+
+  // Helper: in activity mode, replace a value with a fill-in blank
+  const blank = (val) => isActivity
+    ? '<span class="act-blank">&nbsp;</span>'
+    : val;
 
   // Triplicate data
   const tripl       = state.triplicateReadings;
@@ -977,10 +985,10 @@ function printReport() {
 
     calcBlock = `
       Incluídas: ${labels}<br>
-      Média = ${expr} = ${mean.toFixed(4)} Abs<br>
+      Média = ${expr} = ${blank(mean.toFixed(4) + ' Abs')}<br>
       ${included.length > 1 ? `DP = ${sd.toFixed(5)} &nbsp;&nbsp; CV = <strong>${cv.toFixed(2)}%</strong> — ${cvStatus}<br>` : ''}
       Critério de aceitação: CV ≤ ${CV_THRESHOLD}%<br>
-      Fator = ${stdConc} / ${mean.toFixed(4)} = <strong>${fator ? fator.toFixed(2) : '—'} ${unit}/Abs</strong>
+      Fator = ${stdConc} / ${mean.toFixed(4)} = <strong>${blank((fator ? fator.toFixed(2) : '—') + ' ' + unit + '/Abs')}</strong>
     `;
   }
 
@@ -1020,9 +1028,9 @@ function printReport() {
               <td style="text-align:right">${r.lambda}</td>
               <td style="text-align:right;font-family:monospace">${r.abs.toFixed(4)}</td>
               <td style="text-align:right;font-family:monospace">${r.pctT.toFixed(1)}</td>
-              <td style="text-align:right;font-family:monospace">${r.fator.toFixed(2)}</td>
-              <td style="text-align:right;font-family:monospace">${r.conc.toFixed(2)}</td>
-              <td>${ref ? ref.label : '—'}</td>
+              <td style="text-align:right;font-family:monospace">${blank(r.fator.toFixed(2))}</td>
+              <td style="text-align:right;font-family:monospace">${blank(r.conc.toFixed(2))}</td>
+              <td>${blank(ref ? ref.label : '—')}</td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -1034,7 +1042,7 @@ function printReport() {
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Relatório — ${assay} — ${dateStr}</title>
+  <title>${isActivity ? 'Atividade' : 'Relatório'} — ${assay} — ${dateStr}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -1063,14 +1071,34 @@ function printReport() {
     .footer { margin-top: 32pt; border-top: 1pt solid #ccc; padding-top: 12pt; display: grid; grid-template-columns: 1fr 1fr; gap: 20pt; }
     .sig-line { border-bottom: 1pt solid #333; height: 32pt; margin-bottom: 4pt; }
     .sig-label { font-size: 9pt; text-align: center; color: #555; }
+    .act-blank {
+      display: inline-block;
+      min-width: 72pt;
+      border-bottom: 1.5pt solid #333;
+      background: #fffbe6;
+      vertical-align: bottom;
+    }
+    .act-banner {
+      text-align: center;
+      font-size: 9pt;
+      color: #7a5800;
+      background: #fffbe6;
+      border: 1pt solid #e0c060;
+      padding: 4pt 8pt;
+      margin-bottom: 10pt;
+      border-radius: 2pt;
+    }
     @media print { body { padding: 1cm; } }
   </style>
 </head>
 <body>
   <div class="header-block">
-    <h1>Relatório de Análise Bioquímica</h1>
+    <h1>${isActivity ? 'Atividade — Análise Bioquímica' : 'Relatório de Análise Bioquímica'}</h1>
     <p>Simulador Didático de Espectrofotometria — Bioquímica Clínica</p>
   </div>
+  ${isActivity ? `<div class="act-banner">
+    ✎ &nbsp;Preencha os campos em destaque com base nos dados fornecidos. Use os valores de Abs e %T para calcular Média, Fator e Concentrações.
+  </div>` : ''}
 
   <h2>Dados da Corrida</h2>
   <div class="meta-grid">

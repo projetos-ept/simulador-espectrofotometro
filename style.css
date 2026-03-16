@@ -97,6 +97,9 @@ header {
   color: var(--accent);
 }
 
+.icon-btn.activity-btn { color: #c8a030; border-color: rgba(200,160,48,0.35); }
+.icon-btn.activity-btn:hover { color: #f0c040; border-color: var(--accent-dim); }
+
 /* ── Diagram section ────────────────────────────────────────────── */
 .diagram-section {
   background: var(--surface);
