@@ -639,6 +639,52 @@ header {
 .cv-badge.warn { background: rgba(232,184,48,0.15); color: var(--warn); }
 .cv-badge.bad  { background: rgba(232,64,64,0.15);  color: var(--danger); }
 
+/* ── Forçar erro checkbox ───────────────────────────────────────── */
+.forcar-erro-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 16px 2px;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  cursor: pointer;
+  user-select: none;
+}
+
+.forcar-erro-label input { display: none; }
+
+.forcar-erro-box {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.forcar-erro-label input:checked ~ .forcar-erro-box {
+  border-color: var(--danger);
+  background: rgba(232,64,64,0.18);
+}
+
+.forcar-erro-box::after {
+  content: '';
+  display: none;
+  width: 8px;
+  height: 8px;
+  background: var(--danger);
+  border-radius: 1px;
+}
+
+.forcar-erro-label input:checked ~ .forcar-erro-box::after { display: block; }
+
+.forcar-erro-label:hover .forcar-erro-box { border-color: var(--danger); }
+.forcar-erro-label:has(input:checked) { color: var(--danger); }
+
 .tripl-actions {
   display: flex;
   gap: 8px;
