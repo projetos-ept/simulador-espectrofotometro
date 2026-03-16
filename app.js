@@ -1097,7 +1097,7 @@ function printReport(isActivity = false) {
     <p>Simulador Didático de Espectrofotometria — Bioquímica Clínica</p>
   </div>
   ${isActivity ? `<div class="act-banner">
-    ✎ &nbsp;Preencha os campos em destaque com base nos dados fornecidos. Use os valores de Abs e %T para calcular Média, Fator e Concentrações.
+    ✎ &nbsp;Preencha os campos ausentes com base nos dados fornecidos. Use os valores de Absorbância do Padrão para calcular a Média e o Fator. Em seguida, calcule as Concentrações das Amostras e as classifique conforme os valores de referência.
   </div>` : ''}
 
   <h2>Dados da Corrida</h2>
@@ -1130,7 +1130,7 @@ function printReport(isActivity = false) {
 
   <h2>Resultados das Amostras</h2>
   <p style="font-size:9pt;color:#777;margin-bottom:6pt">
-    Referência (glicemia em jejum): Normal 70–99 mg/dL · Hipoglicemia &lt;70 · Pré-diabetes 100–125 · Diabetes ≥126 mg/dL
+    ${blank('Referência (glicemia em jejum): Normal 70–99 mg/dL · Hipoglicemia &lt;70 · Pré-diabetes 100–125 · Diabetes ≥126 mg/dL')}
   </p>
   ${resultsBlock}
 
