@@ -46,7 +46,7 @@ CV% = (DP / Média) × 100
 | 0,5 – 1,0 % | Aprovado — no limite |
 | > 1,0 % | **Reprovado** — repetir a leitura |
 
-O limite de 1,0 % segue o critério adotado em rotinas analíticas clínicas para garantir reprodutibilidade.
+O limite de 1,0 % segue o critério adotado em rotinas analíticas clínicas para garantir reprodutibilidade. Um painel didático exibe a fórmula, as faixas e as causas mais comuns de CV elevado diretamente na interface.
 
 ### Correlação de Pearson e Coeficiente de Determinação
 
@@ -100,7 +100,11 @@ Três leituras independentes da solução padrão. O simulador aplica ruído gau
 - **80 % das vezes** (1.ª tentativa): CV < 0,5 % — leituras precisas
 - **20 % das vezes** (1.ª tentativa): CV entre 1 % e 6 % — simula imprecisão (pipetagem, bolhas, temperatura)
 
-Quando o CV supera 1 %, o botão de aceite fica bloqueado e o sistema exige nova leitura, ensinando o aluno a identificar e corrigir a causa.
+Quando o CV supera 1 %, o botão de aceite fica bloqueado e o sistema exige nova leitura, ensinando o aluno a identificar e corrigir a causa. Cada tentativa reprovada é registrada no histórico e impressa no laudo para comparação.
+
+#### Checkbox "Forçar erro"
+
+Disponível na seção de triplicata. Quando ativado, a próxima leitura (ou refazimento) gera obrigatoriamente CV entre **5 % e 10 %**, permitindo ao docente demonstrar cenários de alta imprecisão sob demanda.
 
 ### 3 · Cálculo do Fator de Calibração
 
@@ -121,7 +125,7 @@ Os resultados acumulam na tabela com classificação clínica automática.
 
 ### 5 · Curvas de Calibração
 
-Quatro curvas (A – D) são geradas simultaneamente. Exatamente **duas são aprovadas** (R² ≥ 0,995) e **duas são reprovadas** com diferentes tipos de falha:
+Quatro curvas (A – D) são geradas simultaneamente. Exatamente **duas são aprovadas** (R² ≥ 0,995) e **duas são reprovadas** com diferentes tipos de falha. As posições aprovada/reprovada são sorteadas aleatoriamente a cada geração.
 
 | Tipo de falha | Descrição |
 |---------------|-----------|
@@ -129,19 +133,32 @@ Quatro curvas (A – D) são geradas simultaneamente. Exatamente **duas são apr
 | **Plateau** | Saturação das concentrações altas (não-linearidade) |
 | **Dispersão** | Ruído excessivo em todos os pontos (~30 % CV) |
 
-As posições aprovada/reprovada são sorteadas a cada geração. As duas curvas aprovadas usam a absorbância média da triplicata como âncora (± 1–3 % de variação), para que o aluno possa comparar e escolher a de melhor qualidade.
+As duas curvas aprovadas são **ancoradas na absorbância média da triplicata** (`ε = Ā / C_padrão`), com variação de ±1–3 % entre si, para que o aluno possa comparar e escolher a de melhor qualidade.
 
-Os coeficientes **r** e **R²** ficam ocultos por padrão; um botão "Analisar a correlação linear desta curva →" os revela, incentivando o aluno a primeiro julgar a curva visualmente antes de consultar os indicadores estatísticos.
+Os coeficientes **r** e **R²** ficam ocultos por padrão; um botão "Analisar a correlação linear desta curva →" os revela com interpretação textual, incentivando o aluno a primeiro julgar a curva visualmente antes de consultar os indicadores estatísticos.
 
-### 6 · Relatório
+### 6 · Relatório e Atividade
 
-Gerado como página HTML imprimível (PDF via Ctrl+P / ⌘+P). Inclui:
+Dois botões no cabeçalho geram documentos imprimíveis (PDF via Ctrl+P / ⌘+P):
 
-- Cabeçalho: data, hora, modo, λ, padrão, fator
-- **Tentativas reprovadas** (se houver) com leituras e CV de cada falha
+| Botão | Conteúdo |
+|-------|----------|
+| ⎙ **Imprimir Relatório** | Documento completo com todos os valores calculados |
+| ✎ **Imprimir Atividade** | Mesma estrutura, com campos em branco para preenchimento pelo estudante |
+
+**Campos em branco na Atividade:**
+- Resultado da Média da triplicata
+- Resultado do Fator de calibração
+- Coluna Fator na tabela de amostras (todas as linhas)
+- Coluna Concentração (todas as linhas)
+- Coluna Classificação (todas as linhas)
+
+**O Relatório inclui:**
+- Cabeçalho: data, hora, modo, λ, padrão, fator, número de tentativas
+- Seção de tentativas reprovadas (se houver) com leituras e CV de cada falha
 - Triplicata aceita com DP, CV e critério explícito
 - Tabela de amostras com interpretação clínica
-- **Curva de calibração selecionada**: tabela + gráfico SVG lado a lado, com r e R²
+- Curva de calibração selecionada: tabela + gráfico SVG lado a lado, centralizados, com r e R²
 - Linha de assinatura
 
 ---
@@ -153,11 +170,14 @@ Gerado como página HTML imprimível (PDF via Ctrl+P / ⌘+P). Inclui:
 | Diagrama SVG do caminho óptico | Visualizar lâmpada → fenda → monocromador → cubeta → detector |
 | Painel didático CV% | Fórmula, faixas e causas de CV elevado expostas durante a prática |
 | Bloqueio por CV > 1 % | Forçar o aluno a repetir leituras imprecisas e investigar a causa |
+| Checkbox "Forçar erro" | Permitir ao docente demonstrar alta imprecisão (CV 5–10 %) sob demanda |
 | Histórico de tentativas no laudo | Comparar a tentativa reprovada com a aceita |
-| Curvas com falhas distintas | Treinar identificação visual e estatística de problemas analíticos |
-| r / R² ocultos na curva | Estimular a análise crítica antes de revelar o indicador numérico |
+| Curvas ancoradas na triplicata | Garantir coerência entre a leitura do padrão e os pontos da curva |
+| Posições de curvas aleatórias | Impedir memorização da resposta; cada sessão é diferente |
+| r / R² ocultos na curva | Estimular a análise crítica visual antes de revelar o indicador numérico |
 | Interpretação clínica automática | Conectar o resultado analítico à decisão clínica (glicemia) |
 | Relatório completo | Praticar documentação laboratorial |
+| Atividade com campos em branco | Exercício de cálculo manual a partir dos dados instrumentais |
 
 ---
 
@@ -196,8 +216,9 @@ simulador-espectrofotometro/
 2. Selecione o modo **Glicose** ou **Genérico**
 3. Siga o fluxo: **BRANCO → LER PADRÃO → ACEITAR → LER AMOSTRA → GERAR CURVAS → RELATÓRIO**
 4. Se o CV da triplicata for > 1 %, identifique a causa e clique **Refazer Leitura**
-5. Nas curvas, analise visualmente antes de revelar r e R²; selecione a melhor aprovada
-6. Imprima o relatório com Ctrl+P (ou ⌘+P no macOS)
+   - Para demonstrar imprecisão deliberadamente, ative o checkbox **Forçar erro** antes de refazer
+5. Nas curvas, analise visualmente cada uma antes de revelar r e R²; selecione a melhor aprovada
+6. Imprima o **Relatório** (⎙) para registro ou a **Atividade** (✎) para exercício de cálculo manual
 
 ---
 
