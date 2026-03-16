@@ -17,6 +17,7 @@ const state = {
   triplicateSD:    null,
   triplicateCV:    null,
   triplicateFailedAttempts: [], // [{ attempt, readings, cv, mean }] — saved on each retry
+  forcarErro: false,           // when true, next reading is forced to CV 5–10%
 
   fator:         null,
   fatorAccepted: false,
@@ -190,15 +191,17 @@ function doLerPadrao() {
 
     const baseAbs = getStdConc() * getEpsilon();
 
-    // 20% chance of elevated CV on the first attempt (CV 1–6%); retries are always clean
-    const wantHighCV = state.triplicateAttempt === 1 && Math.random() < 0.20;
+    // Forçar erro manual (checkbox) OR 20% aleatório na 1ª tentativa
+    const wantHighCV = state.forcarErro || (state.triplicateAttempt === 1 && Math.random() < 0.20);
 
     let readings;
     let iters = 0;
 
     if (wantHighCV) {
-      // sigma scaled so expected CV lands between ~1% and ~6%
-      const sigma = 0.013 + Math.random() * 0.045;
+      // forcarErro → CV 5–10%; aleatório → CV 1–6%
+      const sigma = state.forcarErro
+        ? 0.05 + Math.random() * 0.05          // CV ~5–10%
+        : 0.013 + Math.random() * 0.045;       // CV ~1–6%
       do {
         readings = makeReadings(baseAbs, sigma);
         iters++;
